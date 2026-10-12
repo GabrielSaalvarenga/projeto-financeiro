@@ -73,9 +73,14 @@ if page == "Visão geral":
     bank = accts[accts["type"] == "BANK"]["balance"].sum() if not accts.empty else 0
     c2.metric("Saldo em conta", brl(bank))
     if not sp.empty:
-        by_m = sp.groupby("month")["value"].sum()
-        prev = by_m[by_m.index < cur].tail(3).mean()
-        c3.metric("Gasto no mês", brl(by_m.get(cur, 0)), delta=f"média 3m {brl(prev)}", delta_color="off")
+        # compara períodos equivalentes: dia 1 até hoje, no mês atual e nos 3 anteriores
+        day = date.today().day
+        mtd = sp[sp["date"].dt.day <= day].groupby("month")["value"].sum()
+        prev = mtd[mtd.index < cur].tail(3).mean()
+        c3.metric("Gasto no mês", brl(mtd.get(cur, 0)), delta=f"dia 1–{day}, média 3m: {brl(prev)}",
+                  delta_color="off", help=f"Gasto do dia 1 ao dia {day} deste mês x a média do mesmo período "
+                                          "nos 3 meses anteriores. Não conta fatura, investimentos, "
+                                          "transferências entre suas contas nem empréstimos.")
     else:
         c3.metric("Gasto no mês", "—")
     c4.metric("A receber (empréstimos)", brl(loans["remaining"].sum() if not loans.empty else 0))
