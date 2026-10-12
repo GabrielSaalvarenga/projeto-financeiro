@@ -156,7 +156,7 @@ def match_loan_payments(conn) -> int:
             if needle and needle in _norm(f"{t['counterparty']} {t['description']}"):
                 conn.execute("INSERT INTO loan_payments(loan_id, date, amount, transaction_id, note) VALUES (?,?,?,?,?)",
                              (loan["id"], t["date"], t["amount"], t["id"], "Pix casado automaticamente"))
-                conn.execute("UPDATE transactions SET category='Empréstimo recebido' WHERE id=?", (t["id"],))
+                conn.execute("UPDATE transactions SET category='Empréstimo recebido', manual_category='Empréstimo recebido' WHERE id=?", (t["id"],))
                 n += 1
     return n
 

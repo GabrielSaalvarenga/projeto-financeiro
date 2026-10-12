@@ -17,7 +17,7 @@ def seed() -> None:
     months = [(pd.Period(today, "M") - k) for k in range(6, -1, -1)]
     with session() as conn:
         for t in ("transactions", "accounts", "utility_bills", "holdings", "loans", "loan_schedule",
-                  "loan_payments", "car_events", "car_fixed", "fipe_history", "card_bills"):
+                  "loan_payments", "car_events", "car_fixed", "fipe_history", "card_bills", "user_rules"):
             conn.execute(f"DELETE FROM {t}")
         conn.execute("INSERT INTO accounts VALUES ('demo-cc','demo','Inter','Conta','BANK',4210.55,?,NULL)",
                      (today.isoformat(),))
@@ -62,12 +62,12 @@ def seed() -> None:
 
         # empréstimo: R$ 1.200 ao "João", 4x de R$ 300 a partir de 2 meses atrás
         start = months[-3]
-        conn.execute("INSERT INTO loans(person, match_name, date, principal, note) VALUES (?,?,?,?,?)",
-                     ("João (exemplo)", "Joao Exemplo", f"{start.year}-{start.month:02d}-01", 1200.0, "Conserto do carro"))
+        loan_id = conn.execute("INSERT INTO loans(person, match_name, date, principal, note) VALUES (?,?,?,?,?)",
+                     ("João (exemplo)", "Joao Exemplo", f"{start.year}-{start.month:02d}-01", 1200.0, "Conserto do carro")).lastrowid
         for k in range(4):
             p = start + k + 1
-            conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (1, ?, 300)",
-                         (f"{p.year}-{p.month:02d}-10",))
+            conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?, ?, 300)",
+                         (loan_id, f"{p.year}-{p.month:02d}-10"))
         p = start + 1
         tx("demo-cc", f"{p.year}-{p.month:02d}-11", "Pix recebido", 300.00, "JOAO EXEMPLO DA SILVA", "PIX")
 

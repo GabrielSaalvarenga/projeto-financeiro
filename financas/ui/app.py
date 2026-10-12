@@ -16,7 +16,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from financas import analytics, config  # noqa: E402
-from financas.categorize import recategorize  # noqa: E402
+from financas.categorize import add_rule, all_categories, delete_rule, recategorize, set_manual  # noqa: E402
 from financas.db import session  # noqa: E402
 
 # paleta categórica de referência (skill dataviz), em ordem fixa — nunca ciclada
@@ -150,11 +150,61 @@ elif page == "Gastos":
     if q:
         show = show[(show["description"].fillna("") + " " + show["counterparty"].fillna(""))
                     .str.contains(q, case=False)]
-    st.dataframe(show.sort_values("date", ascending=False)[
+    st.dataframe(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
         ["date", "description", "counterparty", "category", "value", "institution", "installment_number",
          "total_installments"]].style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}),
         use_container_width=True, hide_index=True)
-    st.caption("Categoria errada? Ajuste `rules.yaml` e clique em **Recategorizar** na seção Sincronizar.")
+
+    st.subheader("Corrigir categoria")
+    st.caption("Use a busca/filtro acima para achar o lançamento. Suas correções sempre vencem as regras padrão.")
+    pick = show.sort_values("date", ascending=False).head(300)
+    if pick.empty:
+        st.info("Nenhum lançamento no filtro atual.")
+    else:
+        def txt(v) -> str:
+            return "" if v is None or pd.isna(v) else str(v)
+
+        labels = {f"{r.date:%d/%m/%Y} · {txt(r.description)} · {txt(r.counterparty)} · {brl(r.value)} · [{r.category}]": r
+                  for r in pick.itertuples()}
+        with session() as conn:
+            cat_options = all_categories(conn)
+        # fora do form para que o nome sugerido acompanhe o lançamento escolhido
+        chosen = labels[st.selectbox("Lançamento", list(labels))]
+        with st.form("fix_category"):
+            new_cat = st.selectbox("Categoria certa", cat_options,
+                                   index=cat_options.index(chosen.category) if chosen.category in cat_options else 0)
+            scope = st.radio("Aplicar em", ["Só este lançamento", "Sempre que aparecer este nome"], horizontal=True)
+            name = st.text_input("Nome que identifica (para 'sempre')", txt(chosen.counterparty) or txt(chosen.description),
+                                 key=f"rule_name_{chosen.id}",
+                                 help="Pode encurtar: 'MARIA SILVA' pega todo Pix com esse nome. Acentos e "
+                                      "maiúsculas não importam.")
+            if st.form_submit_button("Salvar correção"):
+                with session() as conn:
+                    if scope == "Só este lançamento":
+                        set_manual(conn, chosen.id, new_cat)
+                        st.session_state["fix_msg"] = f"Lançamento corrigido para **{new_cat}**."
+                    else:
+                        n = add_rule(conn, name, new_cat)
+                        st.session_state["fix_msg"] = (f"Regra criada: **{name}** → **{new_cat}** "
+                                                       f"({n} lançamento(s) com esse nome).")
+                st.rerun()
+    if msg := st.session_state.pop("fix_msg", None):
+        st.success(msg)
+
+    with session() as conn:
+        mine = pd.read_sql("SELECT pattern, category, created_at FROM user_rules ORDER BY created_at DESC", conn)
+    if not mine.empty:
+        with st.expander(f"Minhas regras ({len(mine)})"):
+            st.dataframe(mine.rename(columns={"pattern": "nome", "category": "categoria", "created_at": "criada em"}),
+                         use_container_width=True, hide_index=True)
+            # em form: escolher a regra não recarrega a página (senão o expander fecha e esconde o botão)
+            with st.form("delete_rule"):
+                rm = st.selectbox("Apagar regra", ["—"] + mine["pattern"].tolist())
+                if st.form_submit_button("Apagar") and rm != "—":
+                    with session() as conn:
+                        delete_rule(conn, rm)
+                    st.session_state["fix_msg"] = f"Regra **{rm}** apagada; lançamentos voltaram às regras padrão."
+                    st.rerun()
 
 # ------------------------------------------------------------------ Previsão
 elif page == "Previsão":
@@ -293,7 +343,7 @@ elif page == "Empréstimos":
                         conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)",
                                      (cur.lastrowid, due, amt))
                 if tx_opts[tx_sel]:
-                    conn.execute("UPDATE transactions SET category='Empréstimo concedido' WHERE id=?", (tx_opts[tx_sel],))
+                    conn.execute("UPDATE transactions SET category='Empréstimo concedido', manual_category='Empréstimo concedido' WHERE id=?", (tx_opts[tx_sel],))
                 analytics.match_loan_payments(conn)
             st.rerun()
 

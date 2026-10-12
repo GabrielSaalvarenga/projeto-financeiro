@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     payment_method     TEXT,                 -- PIX | TED | BOLETO | CARD ...
     installment_number INTEGER,
     total_installments INTEGER,
-    raw                TEXT                  -- JSON original, para reprocessar
+    raw                TEXT,                 -- JSON original, para reprocessar
+    manual_category    TEXT                  -- correção do usuário só para este lançamento (vence tudo)
 );
 CREATE INDEX IF NOT EXISTS ix_tx_date ON transactions(date);
 
@@ -124,6 +125,13 @@ CREATE TABLE IF NOT EXISTS fipe_history (
     value     REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_rules (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern    TEXT NOT NULL UNIQUE,         -- nome normalizado (sem acento, minúsculo)
+    category   TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     at        TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -146,10 +154,18 @@ def session(path: Path | str = DB_PATH):
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Adiciona colunas novas em bancos criados por versões anteriores."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "manual_category" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN manual_category TEXT")
 
 
 def log_sync(conn: sqlite3.Connection, source: str, ok: bool, message: str) -> None:

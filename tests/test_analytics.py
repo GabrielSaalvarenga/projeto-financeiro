@@ -28,3 +28,21 @@ def test_demo_pipeline():
         assert analytics.match_loan_payments(conn) == 0  # idempotente
         car = analytics.car_summary(conn)
         assert 8 < car["km_l"] < 16
+
+
+def test_user_rules_and_manual_override():
+    from financas.categorize import add_rule, delete_rule, recategorize, set_manual
+    seed()
+    with session() as conn:
+        n = add_rule(conn, "Maria Diarista", "Moradia")
+        assert n == 7
+        cats = {r[0] for r in conn.execute("SELECT category FROM transactions WHERE counterparty='Maria Diarista'")}
+        assert cats == {"Moradia"}
+        tx = conn.execute("SELECT id FROM transactions WHERE description='SPOTIFY' LIMIT 1").fetchone()[0]
+        set_manual(conn, tx, "Lazer")
+        recategorize(conn)  # "recategorizar tudo" não apaga correções nem empréstimos
+        assert conn.execute("SELECT category FROM transactions WHERE id=?", (tx,)).fetchone()[0] == "Lazer"
+        assert conn.execute("SELECT COUNT(*) FROM transactions WHERE category='Empréstimo recebido'").fetchone()[0] == 1
+        delete_rule(conn, "maria diarista")
+        assert {r[0] for r in conn.execute(
+            "SELECT category FROM transactions WHERE counterparty='Maria Diarista'")} == {"Pix enviado"}
