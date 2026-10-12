@@ -1,0 +1,9 @@
+streamlit>=1.40
+pandas>=2.2
+plotly>=5.24
+requests>=2.32
+python-dotenv>=1.0
+pdfplumber>=0.11
+ofxparse>=0.21
+pyyaml>=6.0
+pytest>=8

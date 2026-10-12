@@ -1,0 +1,48 @@
+# Regras de categorização — a primeira regra que casar vence.
+# `match` é regex (sem diferenciar maiúsculas) aplicada à descrição + contraparte.
+# Edite à vontade; depois clique em "Recategorizar" no painel (ou rode `python -m financas.cli recategorize`).
+
+# Categorias que NÃO contam como gasto nem renda (movimentação entre contas suas)
+nao_gasto:
+  - Transferência interna
+  - Pagamento de fatura
+  - Investimento
+  - Empréstimo concedido
+  - Empréstimo recebido
+
+regras:
+  - {match: "pagamento.*fatura|pgto fatura|fatura cart", categoria: Pagamento de fatura}
+  - {match: "salario|salário|folha|proventos|pagto salario", categoria: Salário}
+  - {match: "cemig", categoria: Energia (Cemig)}
+  - {match: "cesama", categoria: Água (Cesama)}
+  - {match: "\\bxp\\b|xp invest|binance|aplica[cç][aã]o|cdb|tesouro", categoria: Investimento}
+  - {match: "posto|shell|ipiranga|petrobras|br mania|ale combust", categoria: Carro - Combustível}
+  - {match: "ipva|detran|licenciamento|seguro auto|porto seguro|oficina|autope[cç]as|estacionamento|sem parar|veloe|conectcar", categoria: Carro - Outros}
+  - {match: "supermerc|mercado|atacad|hortifruti|bahamas|bretas|carrefour|assai|assaí", categoria: Mercado}
+  - {match: "ifood|rappi|restaurante|lanchonete|pizzar|burger|padaria|bar ", categoria: Alimentação fora}
+  - {match: "uber|99app|99 taxi|cabify", categoria: Transporte}
+  - {match: "farm[aá]cia|drogaria|droga raia|pacheco|unimed|hospital|laborat", categoria: Saúde}
+  - {match: "netflix|spotify|disney|hbo|max\\.com|prime video|youtube|apple\\.com|google one|icloud|openai|anthropic|claude", categoria: Assinaturas}
+  - {match: "claro|vivo|tim |oi fibra|internet|telecom", categoria: Telefone/Internet}
+  - {match: "amazon|mercado ?livre|shopee|magalu|aliexpress", categoria: Compras online}
+
+# Mapa das categorias do Open Finance (Pluggy) para as suas, usado quando nenhuma regra casar
+pluggy:
+  Salary: Salário
+  Credit card payment: Pagamento de fatura
+  Same person transfer: Transferência interna
+  Investments: Investimento
+  Groceries: Mercado
+  Eating out: Alimentação fora
+  Food delivery: Alimentação fora
+  Restaurants: Alimentação fora
+  Gas stations: Carro - Combustível
+  Electricity: Energia (Cemig)
+  Water: Água (Cesama)
+  Pharmacy: Saúde
+  Health: Saúde
+  Taxi and ride-hailing: Transporte
+  Video streaming: Assinaturas
+  Music streaming: Assinaturas
+  Online shopping: Compras online
+  Telecommunications: Telefone/Internet

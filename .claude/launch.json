@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {"name": "painel-demo", "runtimeExecutable": "/bin/sh",
+     "runtimeArgs": ["-c", "cd ~/Dev/projeto-financeiro && FIN_DATA_DIR=data/demo .venv/bin/streamlit run financas/ui/app.py --server.port 8510 --server.headless true"],
+     "port": 8510},
+    {"name": "painel", "runtimeExecutable": "/bin/sh",
+     "runtimeArgs": ["-c", "cd ~/Dev/projeto-financeiro && .venv/bin/streamlit run financas/ui/app.py --server.port 8501 --server.headless true"],
+     "port": 8501}
+  ]
+}
