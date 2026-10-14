@@ -75,11 +75,13 @@ def installments_ahead(df: pd.DataFrame) -> pd.DataFrame:
     out = spending(df)
     if out.empty:
         return pd.DataFrame(columns=["month", "value"])
-    out = out[out["total_installments"].notna() & (out["installment_number"] < out["total_installments"])]
+    out = out[out["total_installments"].notna()].copy()
     rows = []
-    # a parcela mais recente de cada compra define o que ainda falta
+    # a parcela mais recente de cada compra define o que ainda falta — filtrar as quitadas só DEPOIS
+    # (senão a última parcela some e a penúltima "projeta" uma parcela fantasma)
     out["purchase"] = out["description"].map(_norm) + "|" + out["total_installments"].astype(int).astype(str)
-    for _, r in out.sort_values("installment_number").groupby("purchase").tail(1).iterrows():
+    last = out.sort_values("installment_number").groupby("purchase").tail(1)
+    for _, r in last[last["installment_number"] < last["total_installments"]].iterrows():
         for k in range(1, int(r["total_installments"] - r["installment_number"]) + 1):
             rows.append({"month": _add_months(r["month"], k), "value": r["value"]})
     return pd.DataFrame(rows).groupby("month", as_index=False)["value"].sum() if rows else \
