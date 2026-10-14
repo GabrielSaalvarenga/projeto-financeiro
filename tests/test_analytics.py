@@ -13,6 +13,9 @@ def test_categorize_rules():
     assert categorize("Pagamento fatura cartão", None, None, -100) == "Pagamento de fatura"
     assert categorize("PIX recebido", "Fulano", None, 50) == "Pix recebido"
     assert categorize("x", None, "Groceries", -10) == "Mercado"
+    # Pix para conta própria no Banco XP (ISPB 33264668) = investimento
+    assert categorize("Pix enviado - Fulano", None, "Same person transfer", -500,
+                      counterparty_ispb="33264668") == "Investimento"
 
 
 def test_demo_pipeline():

@@ -56,6 +56,12 @@ def _signed_amount(tx: dict) -> float:
     return -amount if tx.get("type") == "DEBIT" else amount
 
 
+def _counterparty_ispb(tx: dict) -> str | None:
+    pd = tx.get("paymentData") or {}
+    side = (pd.get("payer") if tx.get("type") == "CREDIT" else pd.get("receiver")) or {}
+    return side.get("routingNumberISPB")
+
+
 def _counterparty(tx: dict) -> str | None:
     pd = tx.get("paymentData") or {}
     side = pd.get("payer") if tx.get("type") == "CREDIT" else pd.get("receiver")
@@ -90,14 +96,16 @@ def sync(conn, days: int = 365) -> str:
                 cc = tx.get("creditCardMetadata") or {}
                 conn.execute(
                     """INSERT INTO transactions(id, account_id, source, date, description, amount, source_category,
-                       counterparty, payment_method, installment_number, total_installments, raw)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                       counterparty, payment_method, installment_number, total_installments, raw, counterparty_ispb)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET amount=excluded.amount, description=excluded.description,
-                       source_category=excluded.source_category, raw=excluded.raw""",
+                       source_category=excluded.source_category, raw=excluded.raw,
+                       counterparty_ispb=excluded.counterparty_ispb""",
                     (
                         tx["id"], acc["id"], "pluggy", tx["date"][:10], tx.get("description"), _signed_amount(tx),
                         tx.get("category"), _counterparty(tx), (tx.get("paymentData") or {}).get("paymentMethod"),
                         cc.get("installmentNumber"), cc.get("totalInstallments"), json.dumps(tx, ensure_ascii=False),
+                        _counterparty_ispb(tx),
                     ),
                 )
                 n_tx += 1

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     category           TEXT,                 -- categoria final (regras > origem)
     source_category    TEXT,                 -- categoria que veio da origem
     counterparty       TEXT,                 -- pagador/recebedor (Pix)
+    counterparty_ispb  TEXT,                 -- código (ISPB) do banco do outro lado do Pix/TED
     payment_method     TEXT,                 -- PIX | TED | BOLETO | CARD ...
     installment_number INTEGER,
     total_installments INTEGER,
@@ -166,6 +167,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
     if "manual_category" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN manual_category TEXT")
+    if "counterparty_ispb" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN counterparty_ispb TEXT")
 
 
 def log_sync(conn: sqlite3.Connection, source: str, ok: bool, message: str) -> None:

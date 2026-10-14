@@ -10,6 +10,11 @@ nao_gasto:
   - Empréstimo concedido
   - Empréstimo recebido
 
+# Categoria pelo banco do outro lado do Pix/TED (código ISPB do Banco Central).
+# Vale depois das suas regras do painel e antes das regras por palavra-chave.
+por_banco:
+  "33264668": Investimento   # Banco XP — aportes e resgates na XP
+
 regras:
   - {match: "pagamento.*fatura|pgto fatura|fatura cart|pagto debito automatico|pagamento on ?line", categoria: Pagamento de fatura}
   - {match: "salario|salário|folha|proventos|pagto salario", categoria: Salário}

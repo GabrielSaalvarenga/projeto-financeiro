@@ -39,6 +39,7 @@ def non_spending() -> set[str]:
 def all_categories(conn=None) -> list[str]:
     rules = load_rules()
     cats = {c for _, c in rules["_compiled"]} | set(rules.get("pluggy", {}).values()) | set(rules.get("nao_gasto", []))
+    cats |= set((rules.get("por_banco") or {}).values())
     cats |= {"Pix enviado", "Pix recebido", "Outros", "Outras entradas"}
     if conn is not None:
         cats |= {r[0] for r in conn.execute("SELECT DISTINCT category FROM transactions WHERE category IS NOT NULL")}
@@ -53,13 +54,16 @@ def user_rules(conn) -> list[tuple[str, str]]:
 
 
 def categorize(description: str | None, counterparty: str | None, source_category: str | None, amount: float,
-               custom: list[tuple[str, str]] | None = None) -> str:
+               custom: list[tuple[str, str]] | None = None, counterparty_ispb: str | None = None) -> str:
     rules = load_rules()
     text = f"{description or ''} {counterparty or ''}"
     norm = f" {normalize(text)} "
     for pattern, cat in custom or []:
         if f" {pattern} " in norm:
             return cat
+    by_bank = {str(k): v for k, v in (rules.get("por_banco") or {}).items()}
+    if counterparty_ispb and counterparty_ispb in by_bank:
+        return by_bank[counterparty_ispb]
     for rx, cat in rules["_compiled"]:
         if rx.search(text):
             return cat
@@ -73,13 +77,14 @@ def categorize(description: str | None, counterparty: str | None, source_categor
 def recategorize(conn, only_missing: bool = False) -> int:
     load_rules.cache_clear()
     custom = user_rules(conn)
-    sql = "SELECT id, description, counterparty, source_category, amount, manual_category FROM transactions"
+    sql = ("SELECT id, description, counterparty, source_category, amount, manual_category, counterparty_ispb "
+           "FROM transactions")
     if only_missing:
         sql += " WHERE category IS NULL"
     rows = conn.execute(sql).fetchall()
     for r in rows:
         cat = r["manual_category"] or categorize(r["description"], r["counterparty"], r["source_category"],
-                                                 r["amount"], custom)
+                                                 r["amount"], custom, r["counterparty_ispb"])
         conn.execute("UPDATE transactions SET category=? WHERE id=?", (cat, r["id"]))
     return len(rows)
 
