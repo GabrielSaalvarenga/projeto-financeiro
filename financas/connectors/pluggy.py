@@ -65,7 +65,7 @@ def _counterparty(tx: dict) -> str | None:
     return merchant.get("name") or merchant.get("businessName")
 
 
-def sync(conn, days: int = 120) -> str:
+def sync(conn, days: int = 365) -> str:
     if not (config.PLUGGY_CLIENT_ID and config.PLUGGY_CLIENT_SECRET and config.PLUGGY_ITEM_IDS):
         raise RuntimeError("Pluggy não configurado (.env: PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET, PLUGGY_ITEM_IDS)")
 

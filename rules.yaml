@@ -11,7 +11,7 @@ nao_gasto:
   - Empréstimo recebido
 
 regras:
-  - {match: "pagamento.*fatura|pgto fatura|fatura cart", categoria: Pagamento de fatura}
+  - {match: "pagamento.*fatura|pgto fatura|fatura cart|pagto debito automatico|pagamento on ?line", categoria: Pagamento de fatura}
   - {match: "salario|salário|folha|proventos|pagto salario", categoria: Salário}
   - {match: "cemig", categoria: Energia (Cemig)}
   - {match: "cesama", categoria: Água (Cesama)}
