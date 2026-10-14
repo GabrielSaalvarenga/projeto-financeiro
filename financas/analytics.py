@@ -130,13 +130,17 @@ def forecast(conn, months: int = 6) -> pd.DataFrame:
 
     loans = loan_status(conn)
     sched = loan_schedule_open(conn)
+    other = pd.read_sql("SELECT amount FROM other_income WHERE active=1", conn)
+    result["Benefícios (Flash)"] = float(other["amount"].sum()) if not other.empty else 0.0
+
     result["A receber (empréstimos)"] = result["month"].map(
         sched.groupby("month")["remaining"].sum() if not sched.empty else {}).fillna(0.0)
 
     result = result.fillna(0.0)
     out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Variáveis (média)"]
     result["Saídas previstas"] = result[out_cols].sum(axis=1)
-    result["Saldo previsto"] = result["Salário"] + result["A receber (empréstimos)"] - result["Saídas previstas"]
+    result["Saldo previsto"] = (result["Salário"] + result["Benefícios (Flash)"] + result["A receber (empréstimos)"]
+                                - result["Saídas previstas"])
     result.attrs["loans_open"] = float(loans["remaining"].sum()) if not loans.empty else 0.0
     return result
 
@@ -241,3 +245,40 @@ def latest_holdings(conn) -> pd.DataFrame:
 def net_worth_history(conn) -> pd.DataFrame:
     return pd.read_sql("SELECT snapshot, source, SUM(value_brl) AS value FROM holdings GROUP BY snapshot, source "
                        "ORDER BY snapshot", conn)
+
+
+# ---------- Cartão ----------
+
+def card_summary(conn) -> list[dict]:
+    """Uma entrada por cartão: limite, usado, disponível, parcelas futuras, fatura aberta estimada, faturas."""
+    df = transactions(conn)
+    cards = conn.execute("SELECT * FROM accounts WHERE type='CREDIT'").fetchall()
+    cur = date.today().strftime("%Y-%m")
+    out = []
+    for c in cards:
+        sub = df[df["account_id"] == c["id"]] if not df.empty else df
+        ahead = installments_ahead(sub) if not sub.empty else pd.DataFrame(columns=["month", "value"])
+        future = ahead[ahead["month"] > cur] if not ahead.empty else ahead
+        used = (c["credit_limit"] - c["available_limit"]) if c["credit_limit"] is not None and \
+            c["available_limit"] is not None else c["balance"]
+        future_total = float(future["value"].sum()) if not future.empty else 0.0
+        # compras parceladas ainda em aberto (última parcela vista de cada compra)
+        inst = spending(sub)
+        open_inst = pd.DataFrame()
+        if not inst.empty:
+            inst = inst[inst["total_installments"].notna()].copy()
+            if not inst.empty:
+                inst["purchase"] = inst["description"].map(_norm) + "|" + inst["total_installments"].astype(int).astype(str)
+                last = inst.sort_values("installment_number").groupby("purchase").tail(1)
+                open_inst = last[last["installment_number"] < last["total_installments"]].assign(
+                    remaining=lambda x: (x["total_installments"] - x["installment_number"]).astype(int))
+                open_inst = open_inst.assign(to_pay=open_inst["value"] * open_inst["remaining"])
+        bills = pd.read_sql("SELECT due_date, total, minimum FROM card_bills WHERE account_id=? ORDER BY due_date",
+                            conn, params=(c["id"],))
+        out.append({
+            "name": c["name"], "institution": c["institution"], "limit": c["credit_limit"],
+            "available": c["available_limit"], "used": used, "future_installments": future_total,
+            "open_bill_estimate": (used - future_total) if used is not None else None,
+            "last_due": c["bill_due_date"], "ahead": future, "open_installments": open_inst, "bills": bills,
+        })
+    return out

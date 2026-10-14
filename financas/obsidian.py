@@ -41,7 +41,7 @@ def render() -> str:
 
     lines += ["", "## Previsão (3 meses)", "", "| Mês | Entradas | Saídas | Saldo |", "|---|---|---|---|"]
     for _, r in fc.iterrows():
-        lines.append(f"| {r['month']} | {brl(r['Salário'] + r['A receber (empréstimos)'])} | "
+        lines.append(f"| {r['month']} | {brl(r['Salário'] + r['Benefícios (Flash)'] + r['A receber (empréstimos)'])} | "
                      f"{brl(r['Saídas previstas'])} | {brl(r['Saldo previsto'])} |")
 
     if not loans.empty:

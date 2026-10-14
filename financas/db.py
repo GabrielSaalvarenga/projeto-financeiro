@@ -126,6 +126,16 @@ CREATE TABLE IF NOT EXISTS fipe_history (
     value     REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS other_income (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,          -- ex.: 'Vale-alimentação (Flash)'
+    amount    REAL NOT NULL,                 -- valor mensal fixo
+    day       INTEGER,                       -- dia do mês em que cai
+    category  TEXT NOT NULL DEFAULT 'Salário',
+    active    INTEGER NOT NULL DEFAULT 1,
+    note      TEXT
+);
+
 CREATE TABLE IF NOT EXISTS user_rules (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     pattern    TEXT NOT NULL UNIQUE,         -- nome normalizado (sem acento, minúsculo)
@@ -169,6 +179,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE transactions ADD COLUMN manual_category TEXT")
     if "counterparty_ispb" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN counterparty_ispb TEXT")
+    acols = {r["name"] for r in conn.execute("PRAGMA table_info(accounts)")}
+    for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT"):
+        if col.split()[0] not in acols:
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {col}")
 
 
 def log_sync(conn: sqlite3.Connection, source: str, ok: bool, message: str) -> None:

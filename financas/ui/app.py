@@ -54,7 +54,7 @@ def style(fig, height=340, month_axis=True):
 with session() as conn:
     df = analytics.transactions(conn)
 
-page = st.sidebar.radio("Seção", ["Visão geral", "Gastos", "Previsão", "Contas de consumo",
+page = st.sidebar.radio("Seção", ["Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
                                   "Empréstimos", "Carro", "Investimentos", "Sincronizar"])
 st.sidebar.caption(f"Base: `{config.DB_PATH}`")
 
@@ -206,6 +206,52 @@ elif page == "Gastos":
                     st.session_state["fix_msg"] = f"Regra **{rm}** apagada; lançamentos voltaram às regras padrão."
                     st.rerun()
 
+# ------------------------------------------------------------------ Cartão
+elif page == "Cartão":
+    st.title("Cartão de crédito")
+    with session() as conn:
+        cards = analytics.card_summary(conn)
+    if not cards:
+        st.info("Nenhum cartão conectado.")
+        st.stop()
+    for card in cards:
+        st.subheader(f"{card['institution']} · {card['name']}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Limite", brl(card["limit"]))
+        c2.metric("Usado", brl(card["used"]), help="Limite − disponível. Inclui as parcelas futuras.")
+        c3.metric("Disponível", brl(card["available"]))
+        c4.metric("Fatura aberta (estimada)", brl(card["open_bill_estimate"]),
+                  help="Usado − parcelas dos próximos meses. A fatura real só fecha no vencimento.")
+        if card["limit"]:
+            st.progress(min(1.0, (card["used"] or 0) / card["limit"]),
+                        text=f"{(card['used'] or 0) / card['limit']:.0%} do limite comprometido · "
+                             f"parcelas futuras {brl(card['future_installments'])}")
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**Parcelas já contratadas por mês**")
+            if not card["ahead"].empty:
+                fig = px.bar(card["ahead"], x="month", y="value", labels={"month": "", "value": "Valor"})
+                fig.update_traces(marker_color=SERIES[1])
+                st.plotly_chart(style(fig, 280), use_container_width=True)
+            else:
+                st.caption("Nenhuma parcela futura.")
+        with right:
+            st.markdown("**Faturas (últimos 12 meses)**")
+            if not card["bills"].empty:
+                fig = px.bar(card["bills"], x="due_date", y="total", labels={"due_date": "vencimento", "total": "Valor"})
+                fig.update_traces(marker_color=SERIES[0])
+                st.plotly_chart(style(fig, 280, month_axis=False), use_container_width=True)
+        oi = card["open_installments"]
+        if not oi.empty:
+            st.markdown("**Compras parceladas em aberto**")
+            st.dataframe(oi.sort_values("to_pay", ascending=False)[
+                ["date", "description", "installment_number", "total_installments", "value", "remaining", "to_pay"]]
+                .rename(columns={"date": "última parcela", "description": "compra", "installment_number": "parcela",
+                                 "total_installments": "de", "value": "valor parcela", "remaining": "faltam",
+                                 "to_pay": "a pagar"})
+                .style.format({"valor parcela": brl, "a pagar": brl, "última parcela": lambda d: d.strftime("%d/%m/%Y"),
+                               "parcela": "{:.0f}", "de": "{:.0f}"}), use_container_width=True, hide_index=True)
+
 # ------------------------------------------------------------------ Previsão
 elif page == "Previsão":
     st.title("Estimativa dos próximos meses")
@@ -214,16 +260,40 @@ elif page == "Previsão":
         fc = analytics.forecast(conn, n)
     st.caption("Salário = mediana dos últimos 3 meses fechados · Recorrentes = Pix/assinaturas detectados · "
                "Cemig/Cesama = mesmo mês do ano anterior (ou média 3m) · Parcelas = compras parceladas já feitas · "
-               "Variáveis = mediana do resto · A receber = parcelas combinadas dos empréstimos.")
+               "Variáveis = mediana do resto · A receber = parcelas combinadas dos empréstimos · "
+               "Benefícios (Flash) = rendas fora do banco cadastradas abaixo. Mesada não entra (conservador).")
     out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Variáveis (média)"]
     long = fc.melt("month", value_vars=out_cols, var_name="Componente", value_name="Valor")
     fig = px.bar(long, x="month", y="Valor", color="Componente",
                  color_discrete_map={c: SERIES[i] for i, c in enumerate(out_cols)}, labels={"month": ""})
-    fig.add_scatter(x=fc["month"], y=fc["Salário"] + fc["A receber (empréstimos)"], mode="lines+markers",
+    fig.add_scatter(x=fc["month"], y=fc["Salário"] + fc["Benefícios (Flash)"] + fc["A receber (empréstimos)"], mode="lines+markers",
                     name="Entradas previstas", line=dict(color=SERIES[6], width=2), marker=dict(size=8))
     st.plotly_chart(style(fig, 380), use_container_width=True)
     money = [c for c in fc.columns if c != "month"]
     st.dataframe(fc.style.format({c: brl for c in money}), use_container_width=True, hide_index=True)
+
+    st.subheader("Rendas fora do banco")
+    st.caption("Valores fixos que o Open Finance não enxerga (ex.: benefícios no Flash). Entram só na previsão; "
+               "o histórico mostra apenas o que de fato caiu na conta.")
+    with session() as conn:
+        oi = pd.read_sql("SELECT id, name, amount, day, category, active, note FROM other_income ORDER BY day", conn)
+    if not oi.empty:
+        st.dataframe(oi.drop(columns="id").rename(columns={"name": "nome", "amount": "valor/mês", "day": "dia",
+                                                           "category": "categoria", "active": "ativa", "note": "obs"})
+                     .style.format({"valor/mês": brl}), use_container_width=True, hide_index=True)
+    with st.form("other_income"):
+        a, b, c = st.columns([3, 2, 1])
+        name = a.text_input("Nome (igual a um existente = atualiza)")
+        amt = b.number_input("Valor mensal (R$)", min_value=0.0, step=10.0)
+        day = c.number_input("Dia", min_value=1, max_value=31, value=1)
+        active = st.checkbox("Ativa (entra na previsão)", value=True)
+        note = st.text_input("Observação")
+        if st.form_submit_button("Salvar renda") and name:
+            with session() as conn:
+                conn.execute("INSERT INTO other_income(name, amount, day, active, note) VALUES (?,?,?,?,?) "
+                             "ON CONFLICT(name) DO UPDATE SET amount=excluded.amount, day=excluded.day, "
+                             "active=excluded.active, note=excluded.note", (name, amt, int(day), int(active), note))
+            st.rerun()
 
 # ------------------------------------------------------------------ Contas de consumo
 elif page == "Contas de consumo":

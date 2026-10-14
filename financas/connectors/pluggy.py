@@ -86,11 +86,16 @@ def sync(conn, days: int = 365) -> str:
 
         for acc in api.get("/accounts", itemId=item_id).get("results", []):
             conn.execute(
-                """INSERT INTO accounts(id, source, institution, name, type, balance, balance_date)
-                   VALUES (?,?,?,?,?,?,?)
+                """INSERT INTO accounts(id, source, institution, name, type, balance, balance_date,
+                   credit_limit, available_limit, bill_due_date)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET balance=excluded.balance, balance_date=excluded.balance_date,
-                   name=excluded.name, updated_at=CURRENT_TIMESTAMP""",
-                (acc["id"], "pluggy", institution, acc.get("name"), acc.get("type"), acc.get("balance"), today),
+                   name=excluded.name, credit_limit=excluded.credit_limit, available_limit=excluded.available_limit,
+                   bill_due_date=excluded.bill_due_date, updated_at=CURRENT_TIMESTAMP""",
+                (acc["id"], "pluggy", institution, acc.get("name"), acc.get("type"), acc.get("balance"), today,
+                 (acc.get("creditData") or {}).get("creditLimit"),
+                 (acc.get("creditData") or {}).get("availableCreditLimit"),
+                 ((acc.get("creditData") or {}).get("balanceDueDate") or "")[:10] or None),
             )
             for tx in api.transactions(acc["id"], since):
                 cc = tx.get("creditCardMetadata") or {}
