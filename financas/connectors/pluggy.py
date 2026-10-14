@@ -32,14 +32,22 @@ class Pluggy:
         r.raise_for_status()
         return r.json()
 
-    def paged(self, path: str, **params):
-        page = 1
+    def transactions(self, account_id: str, date_from: str):
+        """GET /v2/transactions (o /transactions v1 foi descontinuado — 410). Paginação por cursor em 'next'."""
+        params: dict = {"accountId": account_id, "dateFrom": date_from}
+        url = f"{BASE}/v2/transactions"
         while True:
-            data = self.get(path, page=page, pageSize=500, **params)
+            r = self.s.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            data = r.json()
             yield from data.get("results", [])
-            if page >= data.get("totalPages", 1):
+            nxt = data.get("next")
+            if not nxt:
                 break
-            page += 1
+            if str(nxt).startswith("http"):  # 'next' pode vir como URL completa
+                url, params = nxt, None
+            else:
+                params = {"accountId": account_id, "dateFrom": date_from, "cursor": nxt}
 
 
 def _signed_amount(tx: dict) -> float:
@@ -78,7 +86,7 @@ def sync(conn, days: int = 120) -> str:
                    name=excluded.name, updated_at=CURRENT_TIMESTAMP""",
                 (acc["id"], "pluggy", institution, acc.get("name"), acc.get("type"), acc.get("balance"), today),
             )
-            for tx in api.paged("/transactions", accountId=acc["id"], **{"from": since}):
+            for tx in api.transactions(acc["id"], since):
                 cc = tx.get("creditCardMetadata") or {}
                 conn.execute(
                     """INSERT INTO transactions(id, account_id, source, date, description, amount, source_category,
