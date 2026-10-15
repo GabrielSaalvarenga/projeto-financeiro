@@ -94,6 +94,15 @@ def set_manual(conn, tx_id: str, category: str) -> None:
     conn.execute("UPDATE transactions SET manual_category=?, category=? WHERE id=?", (category, category, tx_id))
 
 
+def set_tag(conn, tx_id: str, tag: str | None) -> None:
+    """Subdivisão de um lançamento (vazio remove)."""
+    conn.execute("UPDATE transactions SET tag=? WHERE id=?", ((tag or "").strip() or None, tx_id))
+
+
+def all_tags(conn) -> list[str]:
+    return [r[0] for r in conn.execute("SELECT DISTINCT tag FROM transactions WHERE tag IS NOT NULL ORDER BY tag")]
+
+
 def add_rule(conn, name: str, category: str) -> int:
     """Cria/atualiza regra 'sempre que aparecer este nome' e reaplica em tudo. Retorna nº de lançamentos afetados."""
     pattern = normalize(name)
@@ -109,3 +118,19 @@ def add_rule(conn, name: str, category: str) -> int:
 def delete_rule(conn, pattern: str) -> None:
     conn.execute("DELETE FROM user_rules WHERE pattern=?", (pattern,))
     recategorize(conn)
+
+
+def propagate_installment_tags(conn) -> int:
+    """Parcela nova sem subdivisão herda a subdivisão das parcelas anteriores da mesma compra."""
+    rows = conn.execute("""
+        SELECT t.id, (SELECT p.tag FROM transactions p
+                      WHERE p.tag IS NOT NULL AND p.account_id=t.account_id AND p.description=t.description
+                        AND p.total_installments=t.total_installments AND p.installment_number<t.installment_number
+                      ORDER BY p.installment_number DESC LIMIT 1) AS inherited
+        FROM transactions t WHERE t.tag IS NULL AND t.total_installments IS NOT NULL""").fetchall()
+    n = 0
+    for r in rows:
+        if r["inherited"]:
+            conn.execute("UPDATE transactions SET tag=? WHERE id=?", (r["inherited"], r["id"]))
+            n += 1
+    return n

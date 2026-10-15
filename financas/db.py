@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     installment_number INTEGER,
     total_installments INTEGER,
     raw                TEXT,                 -- JSON original, para reprocessar
-    manual_category    TEXT                  -- correção do usuário só para este lançamento (vence tudo)
+    manual_category    TEXT,                 -- correção do usuário só para este lançamento (vence tudo)
+    tag                TEXT                  -- subdivisão livre (ex.: viagem 'Capitólio 2025')
 );
 CREATE INDEX IF NOT EXISTS ix_tx_date ON transactions(date);
 
@@ -179,6 +180,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE transactions ADD COLUMN manual_category TEXT")
     if "counterparty_ispb" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN counterparty_ispb TEXT")
+    if "tag" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN tag TEXT")
     acols = {r["name"] for r in conn.execute("PRAGMA table_info(accounts)")}
     for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT"):
         if col.split()[0] not in acols:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import shutil
 
 from . import analytics, config
-from .categorize import recategorize
+from .categorize import propagate_installment_tags, recategorize
 from .connectors import binance, pluggy
 from .db import log_sync, session
 from .importers import ofx, utility_pdf
@@ -37,6 +37,7 @@ def run_all() -> list[tuple[str, bool, str]]:
             report.append((bill["provider"], ok, f"{bill['file']}: {bill['amount']} ({bill['ref_month']})"))
 
         recategorize(conn, only_missing=True)
+        propagate_installment_tags(conn)
         n = analytics.match_loan_payments(conn)
         if n:
             report.append(("empréstimos", True, f"{n} pagamento(s) casado(s) por Pix"))

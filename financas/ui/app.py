@@ -16,7 +16,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from financas import analytics, config  # noqa: E402
-from financas.categorize import add_rule, all_categories, delete_rule, recategorize, set_manual  # noqa: E402
+from financas.categorize import (add_rule, all_categories, all_tags, delete_rule, recategorize,  # noqa: E402
+                                 set_manual, set_tag)
 from financas.db import session  # noqa: E402
 
 # paleta categórica de referência (skill dataviz), em ordem fixa — nunca ciclada
@@ -151,9 +152,11 @@ elif page == "Gastos":
         show = show[(show["description"].fillna("") + " " + show["counterparty"].fillna(""))
                     .str.contains(q, case=False)]
     st.dataframe(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
-        ["date", "description", "counterparty", "category", "value", "institution", "installment_number",
-         "total_installments"]].style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}),
+        ["date", "description", "counterparty", "category", "tag", "value", "institution", "installment_number",
+         "total_installments"]].rename(columns={"tag": "subdivisão"})
+        .style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}, na_rep=""),
         use_container_width=True, hide_index=True)
+    st.caption("Valores negativos em 'value' são reembolsos (ex.: amigos devolvendo a parte deles) e abatem o gasto.")
 
     st.subheader("Corrigir categoria")
     st.caption("Use a busca/filtro acima para achar o lançamento. Suas correções sempre vencem as regras padrão.")
@@ -168,6 +171,7 @@ elif page == "Gastos":
                   for r in pick.itertuples()}
         with session() as conn:
             cat_options = all_categories(conn)
+            tag_options = all_tags(conn)
         # fora do form para que o nome sugerido acompanhe o lançamento escolhido
         chosen = labels[st.selectbox("Lançamento", list(labels))]
         with st.form("fix_category"):
@@ -178,8 +182,17 @@ elif page == "Gastos":
                                  key=f"rule_name_{chosen.id}",
                                  help="Pode encurtar: 'MARIA SILVA' pega todo Pix com esse nome. Acentos e "
                                       "maiúsculas não importam.")
+            t1, t2 = st.columns(2)
+            cur_tag = txt(chosen.tag)
+            tag_pick = t1.selectbox("Subdivisão (opcional)", ["— nenhuma —"] + tag_options,
+                                    index=(tag_options.index(cur_tag) + 1) if cur_tag in tag_options else 0,
+                                    key=f"tag_pick_{chosen.id}")
+            tag_new = t2.text_input("…ou criar nova subdivisão", key=f"tag_new_{chosen.id}",
+                                    placeholder="ex.: Viagem Rio 2027")
             if st.form_submit_button("Salvar correção"):
+                tag = tag_new.strip() or (None if tag_pick == "— nenhuma —" else tag_pick)
                 with session() as conn:
+                    set_tag(conn, chosen.id, tag)
                     if scope == "Só este lançamento":
                         set_manual(conn, chosen.id, new_cat)
                         st.session_state["fix_msg"] = f"Lançamento corrigido para **{new_cat}**."
@@ -190,6 +203,19 @@ elif page == "Gastos":
                 st.rerun()
     if msg := st.session_state.pop("fix_msg", None):
         st.success(msg)
+
+    with session() as conn:
+        tagged = pd.read_sql("SELECT tag, category, date, amount FROM transactions WHERE tag IS NOT NULL", conn,
+                             parse_dates=["date"])
+    if not tagged.empty:
+        st.subheader("Por subdivisão")
+        st.caption("Custo líquido (gastos − reembolsos) de cada subdivisão, em todo o período.")
+        agg = tagged.groupby("tag").agg(custo=("amount", lambda x: -x.sum()), lançamentos=("amount", "size"),
+                                        início=("date", "min"), fim=("date", "max"),
+                                        categorias=("category", lambda x: ", ".join(sorted(set(x))))).reset_index()
+        st.dataframe(agg.rename(columns={"tag": "subdivisão"}).sort_values("início", ascending=False)
+                     .style.format({"custo": brl, "início": lambda d: d.strftime("%d/%m/%Y"),
+                                    "fim": lambda d: d.strftime("%d/%m/%Y")}), use_container_width=True, hide_index=True)
 
     with session() as conn:
         mine = pd.read_sql("SELECT pattern, category, created_at FROM user_rules ORDER BY created_at DESC", conn)

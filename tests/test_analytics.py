@@ -49,3 +49,14 @@ def test_user_rules_and_manual_override():
         delete_rule(conn, "maria diarista")
         assert {r[0] for r in conn.execute(
             "SELECT category FROM transactions WHERE counterparty='Maria Diarista'")} == {"Pix enviado"}
+
+
+def test_refund_reduces_spending_not_income():
+    import pandas as pd
+    df = pd.DataFrame({"amount": [-1500.0, 936.23, 3000.0], "category": ["Viagem", "Viagem", "Salário"],
+                       "date": pd.to_datetime(["2025-11-24"] * 3)})
+    df["month"] = "2025-11"
+    df["is_flow"] = True
+    sp, inc = analytics.spending(df), analytics.income(df)
+    assert round(sp["value"].sum(), 2) == 563.77      # gasto líquido da viagem
+    assert inc["amount"].sum() == 3000.0              # reembolso não vira renda

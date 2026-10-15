@@ -33,11 +33,20 @@ def transactions(conn) -> pd.DataFrame:
     return df
 
 
+# Só estas categorias contam como renda. Dinheiro que entra em qualquer outra categoria de fluxo
+# (ex.: amigo devolvendo a parte da viagem, cashback, estorno) é REEMBOLSO e abate o gasto daquela categoria.
+INCOME_CATEGORIES = {"Salário", "Mesada / ajuda de custos", "Outras entradas", "Pix recebido"}
+
+
+def _is_refund(df: pd.DataFrame) -> pd.Series:
+    return (df["amount"] > 0) & df["is_flow"] & ~df["category"].isin(INCOME_CATEGORIES)
+
+
 def spending(df: pd.DataFrame) -> pd.DataFrame:
-    """Saídas reais (exclui faturas, transferências internas, investimentos), valores positivos."""
+    """Gastos reais (exclui faturas, transferências internas, investimentos). value > 0 = gasto, < 0 = reembolso."""
     if df.empty:
         return df
-    out = df[(df["amount"] < 0) & df["is_flow"]].copy()
+    out = df[((df["amount"] < 0) & df["is_flow"]) | _is_refund(df)].copy()
     out["value"] = -out["amount"]
     return out
 
@@ -45,7 +54,7 @@ def spending(df: pd.DataFrame) -> pd.DataFrame:
 def income(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-    return df[(df["amount"] > 0) & df["is_flow"]].copy()
+    return df[(df["amount"] > 0) & df["is_flow"] & df["category"].isin(INCOME_CATEGORIES)].copy()
 
 
 def recurring(df: pd.DataFrame, lookback: int = 4, min_hits: int = 3) -> pd.DataFrame:
