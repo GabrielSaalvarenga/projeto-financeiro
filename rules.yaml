@@ -10,6 +10,11 @@ nao_gasto:
   - Empréstimo concedido
   - Empréstimo recebido
 
+# Contas cujo movimento é só dinheiro seu circulando entre contas/investimentos (pela instituição).
+# Tudo que acontece nelas vira esta categoria (fora de gastos e renda). Correção manual ainda vence.
+contas_investimento:
+  - XP
+
 # Categoria pelo banco do outro lado do Pix/TED (código ISPB do Banco Central).
 # Vale depois das suas regras do painel e antes das regras por palavra-chave.
 por_banco:

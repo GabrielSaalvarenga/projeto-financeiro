@@ -77,13 +77,17 @@ def categorize(description: str | None, counterparty: str | None, source_categor
 def recategorize(conn, only_missing: bool = False) -> int:
     load_rules.cache_clear()
     custom = user_rules(conn)
-    sql = ("SELECT id, description, counterparty, source_category, amount, manual_category, counterparty_ispb "
-           "FROM transactions")
+    inv_inst = {i.lower() for i in (load_rules().get("contas_investimento") or [])}
+    for a in conn.execute("SELECT id, institution FROM accounts"):
+        conn.execute("UPDATE accounts SET force_category=? WHERE id=?",
+                     ("Investimento" if (a["institution"] or "").lower() in inv_inst else None, a["id"]))
+    sql = ("SELECT t.id, t.description, t.counterparty, t.source_category, t.amount, t.manual_category, "
+           "t.counterparty_ispb, a.force_category FROM transactions t LEFT JOIN accounts a ON a.id=t.account_id")
     if only_missing:
-        sql += " WHERE category IS NULL"
+        sql += " WHERE t.category IS NULL"
     rows = conn.execute(sql).fetchall()
     for r in rows:
-        cat = r["manual_category"] or categorize(r["description"], r["counterparty"], r["source_category"],
+        cat = r["manual_category"] or r["force_category"] or categorize(r["description"], r["counterparty"], r["source_category"],
                                                  r["amount"], custom, r["counterparty_ispb"])
         conn.execute("UPDATE transactions SET category=? WHERE id=?", (cat, r["id"]))
     return len(rows)

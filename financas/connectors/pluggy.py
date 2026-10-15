@@ -83,14 +83,19 @@ def sync(conn, days: int = 365) -> str:
     for item_id in config.PLUGGY_ITEM_IDS:
         item = api.get(f"/items/{item_id}")
         institution = (item.get("connector") or {}).get("name", item_id)
+        accounts = api.get("/accounts", itemId=item_id).get("results", [])
+        if institution.lower() == "meupluggy" and accounts:  # a ponte não é a instituição: usa o nome da conta
+            n = accounts[0].get("name", "").upper().replace("BANCO ", "").strip()
+            institution = n if len(n) <= 3 else n.title()
 
-        for acc in api.get("/accounts", itemId=item_id).get("results", []):
+        for acc in accounts:
             conn.execute(
                 """INSERT INTO accounts(id, source, institution, name, type, balance, balance_date,
                    credit_limit, available_limit, bill_due_date)
                    VALUES (?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET balance=excluded.balance, balance_date=excluded.balance_date,
-                   name=excluded.name, credit_limit=excluded.credit_limit, available_limit=excluded.available_limit,
+                   name=excluded.name, institution=excluded.institution,
+                   credit_limit=excluded.credit_limit, available_limit=excluded.available_limit,
                    bill_due_date=excluded.bill_due_date, updated_at=CURRENT_TIMESTAMP""",
                 (acc["id"], "pluggy", institution, acc.get("name"), acc.get("type"), acc.get("balance"), today,
                  (acc.get("creditData") or {}).get("creditLimit"),
@@ -122,11 +127,19 @@ def sync(conn, days: int = 365) -> str:
                          bill.get("minimumPaymentAmount"), json.dumps(bill, ensure_ascii=False)),
                     )
 
+        used: dict[str, int] = {}
         for inv in api.get("/investments", itemId=item_id).get("results", []):
+            # vários títulos têm o mesmo nome (ex.: 4 CDBs do mesmo banco): diferencia pelo vencimento
+            label = inv.get("name") or inv.get("code") or inv["id"]
+            if inv.get("dueDate"):
+                label += f" (venc. {inv['dueDate'][:10]})"
+            used[label] = used.get(label, 0) + 1
+            if used[label] > 1:
+                label += f" #{used[label]}"
             conn.execute(
                 """INSERT OR REPLACE INTO holdings(snapshot, source, asset, asset_type, quantity, price_usd, value_brl)
                    VALUES (?,?,?,?,?,?,?)""",
-                (today, institution.lower(), inv.get("name") or inv.get("code"), inv.get("type"),
+                (today, institution.lower(), label, inv.get("type"),
                  inv.get("quantity"), None, inv.get("balance") or 0),
             )
             n_inv += 1
