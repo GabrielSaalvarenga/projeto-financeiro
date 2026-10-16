@@ -6,6 +6,7 @@ Não existe nenhuma ação de pagamento ou movimentação de dinheiro.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -33,6 +34,15 @@ def brl(v) -> str:
     if v is None or pd.isna(v):
         return "—"
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _read_date(bill: dict, key: str = "read_curr") -> date | None:
+    """Data de leitura da Cemig ("dd/mm" no PDF) com o ano do mês de referência."""
+    if not bill.get(key):
+        return None
+    d, m = map(int, bill[key].split("/"))
+    y, ref_m = map(int, bill["ref_month"].split("-"))
+    return date(y + (1 if m < ref_m - 6 else 0), m, d)
 
 
 def fold_categories(df: pd.DataFrame, col: str, value: str) -> tuple[pd.DataFrame, dict]:
@@ -332,6 +342,7 @@ elif page == "Contas de consumo":
         st.info("Nenhuma conta ainda. Envie o PDF abaixo ou lance manualmente.")
     esc = lambda txt: txt.replace("$", "\\$")  # noqa: E731  (evita o Streamlit ler R$ como fórmula)
     pct = lambda v: "—" if pd.isna(v) else f"{v:+.0f}%"  # noqa: E731
+    fmt = lambda f, suf="": (lambda v: "—" if pd.isna(v) else format(v, f) + suf)  # noqa: E731  (conta sem detalhe não quebra a tabela)
     tab_e, tab_a = st.tabs(["⚡ Energia (Cemig)", "💧 Água (Cesama)"])
 
     with tab_e:
@@ -375,7 +386,7 @@ elif page == "Contas de consumo":
             a.caption("A iluminação pública é cobrada por faixa de consumo: abaixo de ~100 kWh ela cai para R\\$ 6–7, por isso o "
                       "preço cheio fica menor nesses meses.")
             b.subheader("Consumo (kWh)")
-            fig = px.bar(cem, x="ref_month", y="consumption", color="flag", labels={"ref_month": "", "consumption": "kWh",
+            fig = px.bar(cem.assign(flag=cem["flag"].fillna("Não informada")), x="ref_month", y="consumption", color="flag", labels={"ref_month": "", "consumption": "kWh",
                          "flag": "Bandeira"}, category_orders={"ref_month": cem["ref_month"].tolist()},
                          color_discrete_map={"Verde": SERIES[2], "Amarela": SERIES[3], "Vermelha": SERIES[7],
                                                                   "Vermelha Patamar 1": SERIES[7],
@@ -387,19 +398,19 @@ elif page == "Contas de consumo":
             t = cem.iloc[::-1]
             st.dataframe(pd.DataFrame({
                 "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
-                "kWh": t["consumption"].astype(int), "kWh vs ant.": t["cons_var"].map(pct),
-                "kWh/dia": t["daily"].round(1), "Puro R$/kWh": t["tariff_untaxed"].map(lambda v: f"{v:.4f}"),
-                "Cheio R$/kWh": t["price_full"].map(lambda v: f"{v:.2f}"), "ICMS": t["icms"].map(brl),
+                "kWh": t["consumption"].round().astype("Int64"), "kWh vs ant.": t["cons_var"].map(pct),
+                "kWh/dia": t["daily"].map(fmt(".1f")), "Puro R$/kWh": t["tariff_untaxed"].map(fmt(".4f")),
+                "Cheio R$/kWh": t["price_full"].map(fmt(".2f")), "ICMS": t["icms"].map(brl),
                 "PIS+COFINS": (t["pis"].fillna(0) + t["cofins"].fillna(0)).map(brl),
-                "Impostos %": t["taxes_pct"].map(lambda v: f"{v:.1f}%"), "Iluminação": t["public_lighting"].map(brl),
-                "Iluminação %": t["lighting_pct"].map(lambda v: f"{v:.1f}%"), "Bandeira": t["flag"],
+                "Impostos %": t["taxes_pct"].map(fmt(".1f", "%")), "Iluminação": t["public_lighting"].map(brl),
+                "Iluminação %": t["lighting_pct"].map(fmt(".1f", "%")), "Bandeira": t["flag"],
                 "Multas/créditos": t["other_fees"].map(lambda v: brl(v) if v else ""),
                 "Vencimento": t["due_date"]}), use_container_width=True, hide_index=True)
 
             with st.expander("Detalhe de uma fatura"):
                 mes = st.selectbox("Mês", t["ref_month"].tolist(), key="cemig_mes")
                 row = cem[cem["ref_month"] == mes].iloc[0]
-                det = json.loads(row["details"] or "{}")
+                det = json.loads(row["details"]) if isinstance(row["details"], str) else {}
                 st.markdown(esc(f"**{det.get('tariff_class') or ''} · {det.get('supply') or ''}** · leitura {det.get('read_prev')} → "
                          f"{det.get('read_curr')} ({row['days']} dias) · próxima leitura {det.get('read_next')} · "
                          f"emitida em {row['issue_date']}"))
@@ -437,13 +448,12 @@ elif page == "Contas de consumo":
             t = ces.iloc[::-1]
             st.dataframe(pd.DataFrame({
                 "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
-                "m³": t["consumption"].astype(int), "R$/m³": t["price_full"].map(brl),
+                "m³": t["consumption"].round().astype("Int64"), "R$/m³": t["price_full"].map(brl),
                 "Emissão": t["issue_date"], "Vencimento": t["due_date"], "Pago em": t["paid_date"],
                 "Obs.": t["note"].fillna("")}), use_container_width=True, hide_index=True)
 
     st.subheader("Adicionar conta")
-    up_col, man_col = st.columns(2)
-    with up_col:
+    with st.expander("Enviar PDF da fatura"):
         prov = st.selectbox("Fornecedor do PDF", ["cemig", "cesama"])
         files = st.file_uploader("PDF da fatura", type="pdf", accept_multiple_files=True)
         if files and st.button("Importar PDFs"):
@@ -457,18 +467,87 @@ elif page == "Contas de consumo":
                 (st.success if r["amount"] and r["ref_month"] else st.warning)(
                     f"{r['file']}: {brl(r['amount'])} · ref {r['ref_month']} · venc {r['due_date']} · "
                     f"{r['consumption']} {r['unit']}")
-    with man_col:
-        with st.form("bill"):
-            p = st.selectbox("Fornecedor", ["cemig", "cesama"])
-            ref = st.text_input("Mês de referência (AAAA-MM)", date.today().strftime("%Y-%m"))
-            due = st.date_input("Vencimento")
-            amt = st.number_input("Valor (R$)", min_value=0.0, step=1.0)
-            cons = st.number_input("Consumo (kWh ou m³)", min_value=0.0, step=1.0)
-            if st.form_submit_button("Salvar"):
+
+    from financas.importers import utilities
+    with st.expander("Lançar ou completar uma conta à mão", expanded="bill_msg" in st.session_state):
+        for kind, msg in st.session_state.pop("bill_msg", []):
+            getattr(st, kind)(esc(msg))
+        p = st.radio("Fornecedor", ["cemig", "cesama"], horizontal=True,
+                     format_func={"cemig": "⚡ Cemig", "cesama": "💧 Cesama"}.get)
+        with session() as conn:
+            last = utilities.load(conn, p, before="9999-99")
+            next_ref = (pd.Period(last["ref_month"], "M") + 1).strftime("%Y-%m") if last else date.today().strftime("%Y-%m")
+            ref = st.text_input("Mês de referência (AAAA-MM)", next_ref).strip()
+            ok_ref = bool(re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ref))
+            cur = (utilities.load(conn, p, ref) if ok_ref else None) or {}
+            prev = (utilities.load(conn, p, before=ref) if ok_ref else None) or {}
+        if not ok_ref:
+            st.error("Mês de referência no formato AAAA-MM (ex.: 2026-10).")
+            st.stop()
+        st.caption(("Este mês já está lançado: os campos mostram o que está gravado. " if cur else "Mês novo. ")
+                   + "Campo vazio não apaga nada. Consumo, dias, tarifa e impostos totais são calculados.")
+        iso = lambda v: date.fromisoformat(v) if isinstance(v, str) and v else None  # noqa: E731
+        num = lambda k, d=cur: None if d.get(k) is None or pd.isna(d.get(k)) else d[k]  # noqa: E731
+        integer = lambda v: None if v is None else int(v)  # noqa: E731
+        money = dict(step=0.01, format="%.2f", min_value=0.0)
+        with st.form(f"bill_{p}_{ref}"):
+            c = st.columns(3)
+            bill = {"provider": p, "ref_month": ref,
+                    "issue_date": c[0].date_input("Emissão", value=iso(cur.get("issue_date")), format="DD/MM/YYYY"),
+                    "due_date": c[1].date_input("Vencimento", value=iso(cur.get("due_date")), format="DD/MM/YYYY"),
+                    "paid_date": c[2].date_input("Pago em", value=iso(cur.get("paid_date")), format="DD/MM/YYYY")}
+            if p == "cemig":
+                c = st.columns(5)
+                bill["amount"] = c[0].number_input("Valor total (R$)", value=num("amount"), **money)
+                bill["meter_prev"] = c[1].number_input("Leitura anterior", min_value=0, step=1,
+                                                       value=integer(num("meter_prev") if cur else num("meter_curr", prev)))
+                bill["read_prev_date"] = c[2].date_input("Data da leitura anterior", format="DD/MM/YYYY",
+                                                         value=_read_date(cur, "read_prev") if cur else _read_date(prev))
+                bill["meter_curr"] = c[3].number_input("Leitura atual", min_value=0, step=1, value=integer(num("meter_curr")))
+                bill["read_curr_date"] = c[4].date_input("Data da leitura atual", value=_read_date(cur), format="DD/MM/YYYY")
+                c = st.columns(5)
+                bill["energy_untaxed"] = c[0].number_input("Energia sem impostos (R$)", value=num("energy_untaxed"), **money)
+                bill["icms"] = c[1].number_input("ICMS (R$)", value=num("icms"), **money)
+                bill["pis"] = c[2].number_input("PIS (R$)", value=num("pis"), **money)
+                bill["cofins"] = c[3].number_input("COFINS (R$)", value=num("cofins"), **money)
+                bill["public_lighting"] = c[4].number_input("Iluminação pública (R$)", value=num("public_lighting"), **money)
+                c = st.columns([1, 1, 3])
+                flags = ["", "Verde", "Amarela", "Vermelha Patamar 1", "Vermelha Patamar 2"]
+                bill["flag"] = c[0].selectbox("Bandeira", flags, index=flags.index(cur["flag"]) if cur.get("flag") in flags else 0,
+                                              format_func=lambda f: f or "—")
+                bill["flag_value"] = c[1].number_input("Valor da bandeira (R$)", value=num("flag_value"), **money)
+                items = c[2].data_editor(pd.DataFrame(cur.get("other_items") or [], columns=["item", "valor"]).astype(
+                                             {"item": "str", "valor": "float"}),
+                                         num_rows="dynamic", use_container_width=True, key=f"bill_items_{ref}",
+                                         column_config={"item": "Outros itens (multa, juros, Bônus Itaipu…)",
+                                                        "valor": st.column_config.NumberColumn("R$ (crédito negativo)",
+                                                                                               format="%.2f")})
+                items = items.dropna(subset=["valor"])
+                bill["other_items"] = [{"item": i if isinstance(i, str) else "", "valor": float(v)}
+                                       for i, v in zip(items["item"], items["valor"])]
+            else:
+                c = st.columns(3)
+                bill["amount"] = c[0].number_input("Valor total (R$)", value=num("amount"), **money)
+                bill["meter"] = c[1].number_input("Leitura do hidrômetro (m³)", min_value=0, step=1,
+                                                  value=integer(num("meter")))
+                bill["read_date"] = c[2].date_input("Data da leitura", value=iso(cur.get("read_date")), format="DD/MM/YYYY")
+                c = st.columns(3)
+                bill["taxes_total"] = c[0].number_input("Impostos (R$, se tiver o PDF)", value=num("taxes_total"), **money)
+            bill["note"] = st.text_input("Observação", cur.get("note") or "")
+            if st.form_submit_button("Salvar conta"):
+                if not cur and not bill["amount"]:
+                    st.error("Conta nova: informe pelo menos o valor total.")
+                    st.stop()
                 with session() as conn:
-                    conn.execute("INSERT OR REPLACE INTO utility_bills(provider, ref_month, due_date, amount, consumption,"
-                                 " unit) VALUES (?,?,?,?,?,?)", (p, ref, due.isoformat(), amt, cons,
-                                                                 "kWh" if p == "cemig" else "m3"))
+                    b = utilities.manual(conn, bill)
+                unit = "kWh" if p == "cemig" else "m³"
+                msgs = [("success", f"{p.title()} {ref} {'atualizada' if cur else 'lançada'}: {brl(b.get('amount'))}"
+                         + (f" · {b['consumption']:.0f} {unit}" if b.get("consumption") is not None else ""))]
+                gap = utilities.total_gap(b)
+                if gap:
+                    msgs.append(("warning", f"As partes somam {brl(b['amount'] - gap)}, mas o total é "
+                                            f"{brl(b['amount'])} (diferença {brl(gap)}). Confira os valores."))
+                st.session_state["bill_msg"] = msgs
                 st.rerun()
 
 # ------------------------------------------------------------------ Empréstimos

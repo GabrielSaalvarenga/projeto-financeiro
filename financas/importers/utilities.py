@@ -61,3 +61,65 @@ def import_cesama_json(conn, path: Path) -> list[dict]:
         out.append(b)
     log_sync(conn, "cesama", True, f"{len(out)} fatura(s) de {path.name}")
     return out
+
+
+def load(conn, provider: str, ref_month: str | None = None, before: str | None = None) -> dict | None:
+    """Uma conta já gravada (colunas + `details` abertos): a do mês, ou a última antes de `before`."""
+    if ref_month:
+        r = conn.execute("SELECT * FROM utility_bills WHERE provider=? AND ref_month=?", (provider, ref_month)).fetchone()
+    else:
+        r = conn.execute("SELECT * FROM utility_bills WHERE provider=? AND ref_month<? ORDER BY ref_month DESC LIMIT 1",
+                         (provider, before)).fetchone()
+    if not r:
+        return None
+    b = {k: r[k] for k in r.keys() if k not in ("id", "details")}
+    b.update(json.loads(r["details"] or "{}"))
+    return b
+
+
+def manual(conn, bill: dict) -> dict:
+    """Conta lançada no formulário do painel.
+
+    Campo vazio (None/"") não apaga o que já existe: a conta do mês é mesclada com o que veio do PDF/API.
+    Os derivados (consumo, dias, tarifa, impostos, outros itens) são recalculados a partir do que foi informado.
+    """
+    p, ref = bill["provider"], bill["ref_month"]
+    b = load(conn, p, ref) or {"file": "manual"}
+    b.update({k: v for k, v in bill.items() if v not in (None, "")})
+    b["unit"] = "kWh" if p == "cemig" else "m3"
+    for k in ("due_date", "issue_date", "paid_date", "read_date"):
+        if hasattr(b.get(k), "isoformat"):
+            b[k] = b[k].isoformat()
+    if p == "cemig":
+        _derive_cemig(b)
+    else:
+        prev = load(conn, p, before=ref)
+        if b.get("meter") is not None and prev and prev.get("meter") is not None:
+            b["consumption"] = b["meter"] - prev["meter"]
+    save(conn, b)
+    return b
+
+
+def _derive_cemig(b: dict) -> None:
+    if b.get("meter_prev") is not None and b.get("meter_curr") is not None:
+        b["consumption"] = b["meter_curr"] - b["meter_prev"]
+    d0, d1 = b.pop("read_prev_date", None), b.pop("read_curr_date", None)
+    if d0 and d1:
+        b["days"] = (d1 - d0).days
+        b["read_prev"], b["read_curr"] = d0.strftime("%d/%m"), d1.strftime("%d/%m")
+    kwh = b.get("consumption")
+    if b.get("energy_untaxed") is not None and kwh:
+        b["tariff_untaxed"] = round(b["energy_untaxed"] / kwh, 5)
+    if any(b.get(t) is not None for t in ("icms", "pis", "cofins")):
+        b["taxes_total"] = round(sum(b.get(t) or 0 for t in ("icms", "pis", "cofins")), 2)
+        if b.get("energy_untaxed") is not None:
+            b["energy_value"] = round(b["energy_untaxed"] + b["taxes_total"], 2)
+    if "other_items" in b:
+        b["other_fees"] = round(sum(i["valor"] for i in b["other_items"]), 2)
+
+
+def total_gap(b: dict) -> float | None:
+    """Total da fatura menos a soma das partes (energia com impostos + iluminação + outros itens). Só Cemig."""
+    if b.get("provider") != "cemig" or b.get("amount") is None or b.get("energy_value") is None:
+        return None
+    return round(b["amount"] - b["energy_value"] - (b.get("public_lighting") or 0) - (b.get("other_fees") or 0), 2)
