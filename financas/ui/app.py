@@ -5,6 +5,7 @@ Não existe nenhuma ação de pagamento ou movimentação de dinheiro.
 """
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -325,27 +326,120 @@ elif page == "Previsão":
 elif page == "Contas de consumo":
     st.title("Cemig e Cesama")
     with session() as conn:
-        bills = pd.read_sql("SELECT * FROM utility_bills ORDER BY ref_month", conn)
-    if bills.empty:
+        cem = analytics.utility_bills(conn, "cemig")
+        ces = analytics.utility_bills(conn, "cesama")
+    if cem.empty and ces.empty:
         st.info("Nenhuma conta ainda. Envie o PDF abaixo ou lance manualmente.")
-    else:
-        bills["Fornecedor"] = bills["provider"].str.capitalize()
-        cmap = {"Cemig": SERIES[3], "Cesama": SERIES[0]}
-        a, b = st.columns(2)
-        a.subheader("Valor (R$)")
-        a.plotly_chart(style(px.bar(bills, x="ref_month", y="amount", color="Fornecedor", barmode="group",
-                                    color_discrete_map=cmap, labels={"ref_month": "", "amount": "Valor"})),
-                       use_container_width=True)
-        for prov, unit, col in (("cemig", "kWh", b), ("cesama", "m3", b)):
-            sub = bills[bills["provider"] == prov]
-            if not sub.empty:
-                fig = px.line(sub, x="ref_month", y="consumption", markers=True, labels={"ref_month": "", "consumption": unit})
-                fig.update_traces(line=dict(color=cmap[prov.capitalize()], width=2), marker=dict(size=8))
-                fig.update_yaxes(tickprefix="")
-                col.subheader(f"Consumo {prov.capitalize()} ({unit})")
-                col.plotly_chart(style(fig, 160), use_container_width=True)
-        st.dataframe(bills[["Fornecedor", "ref_month", "due_date", "amount", "consumption", "unit", "file"]]
-                     .style.format({"amount": brl}), use_container_width=True, hide_index=True)
+    esc = lambda txt: txt.replace("$", "\\$")  # noqa: E731  (evita o Streamlit ler R$ como fórmula)
+    pct = lambda v: "—" if pd.isna(v) else f"{v:+.0f}%"  # noqa: E731
+    tab_e, tab_a = st.tabs(["⚡ Energia (Cemig)", "💧 Água (Cesama)"])
+
+    with tab_e:
+        if not cem.empty:
+            last12 = cem.tail(12)
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Gasto em 12 meses", brl(last12["amount"].sum()), f"média {brl(last12['amount'].mean())}/mês",
+                      delta_color="off")
+            c2.metric("Consumo em 12 meses", f"{last12['consumption'].sum():,.0f} kWh".replace(",", "."),
+                      f"média {last12['consumption'].mean():.0f} kWh/mês", delta_color="off")
+            c3.metric("kWh puro (sem impostos)", brl(last12["energy_untaxed"].sum() / last12["consumption"].sum()),
+                      "tarifa da Cemig", delta_color="off")
+            c4.metric("kWh cheio (tudo incluído)", brl(last12["amount"].sum() / last12["consumption"].sum()),
+                      "impostos + iluminação + taxas", delta_color="off")
+            c5.metric("Impostos", f"{100 * last12['taxes_total'].sum() / last12['amount'].sum():.1f}% da conta",
+                      f"iluminação pública: {100 * last12['public_lighting'].sum() / last12['amount'].sum():.1f}%",
+                      delta_color="off")
+
+            st.subheader("Para onde vai o dinheiro da conta")
+            comp = cem.assign(**{"Energia (tarifa)": cem["energy_untaxed"], "ICMS": cem["icms"],
+                                 "PIS + COFINS": cem["pis"].fillna(0) + cem["cofins"].fillna(0),
+                                 "Iluminação pública": cem["public_lighting"], "Multas, juros e créditos": cem["other_fees"]})
+            # arredondamento da tarifa: a diferença vai para a energia, para a pilha fechar com o total
+            comp["Energia (tarifa)"] += comp["amount"] - comp[["Energia (tarifa)", "ICMS", "PIS + COFINS",
+                                                                "Iluminação pública", "Multas, juros e créditos"]].sum(axis=1)
+            long = comp.melt(id_vars="ref_month", value_vars=["Energia (tarifa)", "ICMS", "PIS + COFINS",
+                                                              "Iluminação pública", "Multas, juros e créditos"],
+                             var_name="Parte", value_name="R$")
+            st.plotly_chart(style(px.bar(long, x="ref_month", y="R$", color="Parte", color_discrete_sequence=SERIES,
+                                         labels={"ref_month": ""})), use_container_width=True)
+
+            a, b = st.columns(2)
+            a.subheader("Preço do kWh")
+            pr = cem.melt(id_vars="ref_month", value_vars=["tariff_untaxed", "price_taxed", "price_full"],
+                          var_name="Preço", value_name="R$/kWh")
+            pr["Preço"] = pr["Preço"].map({"tariff_untaxed": "Puro (sem impostos)", "price_taxed": "Com impostos",
+                                           "price_full": "Cheio (tudo incluído)"})
+            fig = px.line(pr, x="ref_month", y="R$/kWh", color="Preço", markers=True, color_discrete_sequence=SERIES,
+                          labels={"ref_month": ""})
+            a.plotly_chart(style(fig, 300), use_container_width=True)
+            a.caption("A iluminação pública é cobrada por faixa de consumo: abaixo de ~100 kWh ela cai para R\\$ 6–7, por isso o "
+                      "preço cheio fica menor nesses meses.")
+            b.subheader("Consumo (kWh)")
+            fig = px.bar(cem, x="ref_month", y="consumption", color="flag", labels={"ref_month": "", "consumption": "kWh",
+                         "flag": "Bandeira"}, category_orders={"ref_month": cem["ref_month"].tolist()},
+                         color_discrete_map={"Verde": SERIES[2], "Amarela": SERIES[3], "Vermelha": SERIES[7],
+                                                                  "Vermelha Patamar 1": SERIES[7],
+                                                                  "Vermelha Patamar 2": "#a01c1c"},
+                         hover_data={"daily": ":.1f", "days": True})
+            b.plotly_chart(style(fig, 300).update_yaxes(tickprefix=""), use_container_width=True)
+
+            st.subheader("Mês a mês")
+            t = cem.iloc[::-1]
+            st.dataframe(pd.DataFrame({
+                "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
+                "kWh": t["consumption"].astype(int), "kWh vs ant.": t["cons_var"].map(pct),
+                "kWh/dia": t["daily"].round(1), "Puro R$/kWh": t["tariff_untaxed"].map(lambda v: f"{v:.4f}"),
+                "Cheio R$/kWh": t["price_full"].map(lambda v: f"{v:.2f}"), "ICMS": t["icms"].map(brl),
+                "PIS+COFINS": (t["pis"].fillna(0) + t["cofins"].fillna(0)).map(brl),
+                "Impostos %": t["taxes_pct"].map(lambda v: f"{v:.1f}%"), "Iluminação": t["public_lighting"].map(brl),
+                "Iluminação %": t["lighting_pct"].map(lambda v: f"{v:.1f}%"), "Bandeira": t["flag"],
+                "Multas/créditos": t["other_fees"].map(lambda v: brl(v) if v else ""),
+                "Vencimento": t["due_date"]}), use_container_width=True, hide_index=True)
+
+            with st.expander("Detalhe de uma fatura"):
+                mes = st.selectbox("Mês", t["ref_month"].tolist(), key="cemig_mes")
+                row = cem[cem["ref_month"] == mes].iloc[0]
+                det = json.loads(row["details"] or "{}")
+                st.markdown(esc(f"**{det.get('tariff_class') or ''} · {det.get('supply') or ''}** · leitura {det.get('read_prev')} → "
+                         f"{det.get('read_curr')} ({row['days']} dias) · próxima leitura {det.get('read_next')} · "
+                         f"emitida em {row['issue_date']}"))
+                st.markdown(esc(f"ICMS {det.get('icms_rate')}% sobre {brl(det.get('icms_base'))} = {brl(row['icms'])} · "
+                         f"PIS {det.get('pis_rate')}% = {brl(row['pis'])} · COFINS {det.get('cofins_rate')}% = "
+                         f"{brl(row['cofins'])}"))
+                if row["flag_value"]:
+                    st.markdown(esc(f"Bandeira {row['flag']}: {brl(row['flag_value'])} (já incluída no valor da energia)"))
+                for it in det.get("other_items", []):
+                    st.markdown(esc(f"{it['item']}: {brl(it['valor'])}"))
+                if row["file"]:
+                    st.caption(f"Arquivo: {row['file']}")
+
+    with tab_a:
+        if not ces.empty:
+            last12 = ces.tail(12)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Gasto em 12 meses", brl(last12["amount"].sum()), f"média {brl(last12['amount'].mean())}/mês",
+                      delta_color="off")
+            c2.metric("Consumo em 12 meses", f"{last12['consumption'].sum():.0f} m³",
+                      f"média {last12['consumption'].mean():.1f} m³/mês", delta_color="off")
+            c3.metric("Preço cheio do m³", brl(last12["amount"].sum() / last12["consumption"].sum()),
+                      "tudo incluído", delta_color="off")
+            c4.metric("Impostos", "—", "a Cesama não informa pela API (falta o PDF)", delta_color="off")
+            a, b = st.columns(2)
+            a.subheader("Valor (R$)")
+            a.plotly_chart(style(px.bar(ces, x="ref_month", y="amount", color_discrete_sequence=[SERIES[0]],
+                                        labels={"ref_month": "", "amount": "Valor"}), 300), use_container_width=True)
+            b.subheader("Consumo (m³)")
+            b.plotly_chart(style(px.bar(ces, x="ref_month", y="consumption", color_discrete_sequence=[SERIES[2]],
+                                        labels={"ref_month": "", "consumption": "m³"}), 300).update_yaxes(tickprefix=""),
+                           use_container_width=True)
+            st.caption("Com 3 a 6 m³ por mês, a conta ficou entre R\\$ 33 e R\\$ 51 no período.")
+            st.subheader("Mês a mês")
+            t = ces.iloc[::-1]
+            st.dataframe(pd.DataFrame({
+                "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
+                "m³": t["consumption"].astype(int), "R$/m³": t["price_full"].map(brl),
+                "Emissão": t["issue_date"], "Vencimento": t["due_date"], "Pago em": t["paid_date"],
+                "Obs.": t["note"].fillna("")}), use_container_width=True, hide_index=True)
 
     st.subheader("Adicionar conta")
     up_col, man_col = st.columns(2)

@@ -60,6 +60,21 @@ CREATE TABLE IF NOT EXISTS utility_bills (
     consumption  REAL,
     unit         TEXT,                       -- kWh | m3
     file         TEXT,
+    issue_date   TEXT,
+    paid_date    TEXT,
+    days         INTEGER,                    -- dias de leitura
+    tariff_untaxed REAL,                     -- R$/unidade sem impostos
+    energy_value REAL,                       -- valor do consumo com impostos (sem iluminação/taxas)
+    icms         REAL,
+    pis          REAL,
+    cofins       REAL,
+    taxes_total  REAL,
+    public_lighting REAL,
+    flag         TEXT,                       -- bandeira tarifária
+    flag_value   REAL,
+    other_fees   REAL,                       -- multa, juros, créditos (negativo = crédito)
+    note         TEXT,
+    details      TEXT,                       -- JSON com tudo que foi lido da fatura
     UNIQUE(provider, ref_month)
 );
 
@@ -173,6 +188,11 @@ def session(path: Path | str = DB_PATH):
         conn.close()
 
 
+UTILITY_EXTRA = ("issue_date TEXT", "paid_date TEXT", "days INTEGER", "tariff_untaxed REAL", "energy_value REAL",
+                 "icms REAL", "pis REAL", "cofins REAL", "taxes_total REAL", "public_lighting REAL", "flag TEXT",
+                 "flag_value REAL", "other_fees REAL", "note TEXT", "details TEXT")
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Adiciona colunas novas em bancos criados por versões anteriores."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
@@ -186,6 +206,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT", "force_category TEXT"):
         if col.split()[0] not in acols:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col}")
+    ucols = {r["name"] for r in conn.execute("PRAGMA table_info(utility_bills)")}
+    for col in UTILITY_EXTRA:
+        if col.split()[0] not in ucols:
+            conn.execute(f"ALTER TABLE utility_bills ADD COLUMN {col}")
 
 
 def log_sync(conn: sqlite3.Connection, source: str, ok: bool, message: str) -> None:

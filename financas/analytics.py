@@ -291,3 +291,19 @@ def card_summary(conn) -> list[dict]:
             "last_due": c["bill_due_date"], "ahead": future, "open_installments": open_inst, "bills": bills,
         })
     return out
+
+
+def utility_bills(conn, provider: str) -> pd.DataFrame:
+    """Contas de consumo de um fornecedor com os indicadores derivados (preço por unidade, impostos em %, variação)."""
+    b = pd.read_sql("SELECT * FROM utility_bills WHERE provider=? ORDER BY ref_month", conn, params=(provider,))
+    if b.empty:
+        return b
+    b["price_full"] = b["amount"] / b["consumption"].where(b["consumption"] > 0)
+    b["energy_untaxed"] = b["tariff_untaxed"] * b["consumption"]
+    b["price_taxed"] = b["energy_value"] / b["consumption"].where(b["consumption"] > 0)
+    b["taxes_pct"] = 100 * b["taxes_total"] / b["amount"]
+    b["lighting_pct"] = 100 * b["public_lighting"] / b["amount"]
+    b["daily"] = b["consumption"] / b["days"]
+    b["amount_var"] = 100 * b["amount"].pct_change()
+    b["cons_var"] = 100 * b["consumption"].pct_change()
+    return b

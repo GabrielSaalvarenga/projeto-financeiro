@@ -85,6 +85,14 @@ def import_inbox(conn, inbox: Path) -> list[dict]:
         for pdf in sorted((inbox / provider).glob("*.pdf")):
             if conn.execute("SELECT 1 FROM utility_bills WHERE file=?", (pdf.name,)).fetchone():
                 continue
+            if provider == "cemig":  # leitor detalhado (impostos, iluminação, bandeira)
+                from .utilities import cemig_bill, save
+                bill = cemig_bill(pdf)
+                if bill.get("ref_month") and bill.get("amount"):
+                    save(conn, bill)
+                    log_sync(conn, provider, True, f"{pdf.name}: R$ {bill['amount']:.2f} ({bill['ref_month']})")
+                    results.append(bill)
+                    continue
             bill = parse(provider, pdf)
             results.append(bill)
             if bill["ref_month"] and bill["amount"]:
