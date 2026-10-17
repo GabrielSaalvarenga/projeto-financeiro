@@ -149,3 +149,16 @@ def test_parcela_unica_um_ano_depois_usa_a_data_real():
     assert simples[0][1] == 1240.0
     price = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 11, 17), start=date(2026, 10, 17))
     assert price[0][1] == pytest.approx(94.56, abs=0.01)  # igual à Price da HP quando o 1º vence em 1 mês
+
+
+def test_linha_do_tempo_dos_emprestimos():
+    with session() as conn:
+        for t in ("loans", "people"):
+            conn.execute(f"DELETE FROM {t}")
+        lid = conn.execute("INSERT INTO loans(person, date, principal, rate, rate_period, compounding) "
+                           "VALUES ('Duda','2026-01-15',1000,0.02,'mes','composto')").lastrowid
+        conn.execute("INSERT INTO loan_payments(loan_id, date, amount, directed) VALUES (?,'2026-03-20',500,0)", (lid,))
+        who, tot = analytics.loan_timeline(conn, date(2026, 5, 31))
+        last = who[who["month"] == "2026-05"].iloc[0]["saldo"]
+        assert list(tot["month"])[:3] == ["2026-01", "2026-02", "2026-03"] and tot["emprestado"].iloc[-1] == 1000
+        assert last == pytest.approx(analytics.loan_status(conn, date(2026, 5, 31)).iloc[0]["remaining"], abs=0.01)

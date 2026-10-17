@@ -258,6 +258,31 @@ def loan_statement(conn, loan_id: int, today: date | None = None) -> pd.DataFram
     return pd.DataFrame(rows)
 
 
+def loan_timeline(conn, asof: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Foto mensal (fim de cada mês; a última é `asof`/hoje): saldo a receber por pessoa e total emprestado acumulado."""
+    ls, rs = load_loans(conn)
+    if not ls:
+        return pd.DataFrame(columns=["month", "person", "saldo"]), pd.DataFrame(columns=["month", "emprestado", "recebido"])
+    end = max(asof or date.today(), date.today())
+    first = min(l.date for l in ls)
+    snaps = []
+    for per in pd.period_range(pd.Period(first, "M"), pd.Period(end, "M")):
+        d = min(per.end_time.date(), end)
+        if d >= first:
+            snaps.append((per.strftime("%Y-%m"), d))
+    by_person, totals = [], []
+    for month, d in snaps:
+        states = loans_mod.replay(ls, rs, d)
+        acc: dict[str, float] = {}
+        for l in ls:
+            if l.date <= d and not l.closed:
+                acc[l.person] = acc.get(l.person, 0.0) + states[l.id].balance()
+        by_person += [{"month": month, "person": p, "saldo": round(v, 2)} for p, v in acc.items()]
+        totals.append({"month": month, "emprestado": sum(l.principal for l in ls if l.date <= d),
+                       "recebido": round(sum(states[l.id].paid for l in ls if l.date <= d), 2)})
+    return pd.DataFrame(by_person), pd.DataFrame(totals)
+
+
 # ---------- Empréstimos que eu devo (banco) ----------
 
 def bank_loan_status(conn) -> tuple[pd.DataFrame, pd.DataFrame]:

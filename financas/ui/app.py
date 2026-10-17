@@ -750,6 +750,20 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                                           "closed": "quitado"})
                          .style.format({"emprestado": brl, "recebido": brl, "juros": brl, "falta": brl,
                                         "atrasado": brl}), use_container_width=True, hide_index=True)
+            with session() as conn:
+                tl_person, tl_total = analytics.loan_timeline(conn, asof)
+            if not tl_person.empty:
+                st.subheader("Evolução do que tenho a receber")
+                folded, cmap = fold_categories(tl_person, "person", "saldo")
+                fig = px.bar(folded.groupby(["month", "person"], as_index=False)["saldo"].sum(), x="month", y="saldo",
+                             color="person", color_discrete_map=cmap, labels={"month": "", "saldo": "A receber", "person": ""})
+                fig.add_scatter(x=tl_total["month"], y=tl_total["emprestado"], mode="lines+markers", name="Total emprestado (acum.)",
+                                line=dict(color=SERIES[6], width=2), marker=dict(size=7))
+                fig.update_layout(barmode="stack")
+                st.plotly_chart(style(fig, 360), use_container_width=True)
+                st.caption("Barras = quanto cada pessoa ainda deve naquele mês (com juros). Linha = total já emprestado. "
+                           "Barra acima da linha = juros a receber; barra abaixo = parte já paga. "
+                           "O último mês usa a data escolhida em *Posição em*.")
             if not sched.empty:
                 st.subheader("Quando vou receber")
                 st.dataframe(sched[["person", "due_date", "amount", "remaining"]]
