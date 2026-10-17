@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import sys
-from datetime import date
+from contextlib import contextmanager
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -17,10 +19,10 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from financas import analytics, config  # noqa: E402
+from financas import analytics, backup, config, settings  # noqa: E402
 from financas.categorize import (add_rule, all_categories, all_tags, delete_rule, recategorize,  # noqa: E402
                                  set_manual, set_tag)
-from financas.db import session  # noqa: E402
+from financas.db import session as db_session  # noqa: E402
 
 # paleta categórica de referência (skill dataviz), em ordem fixa — nunca ciclada
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
@@ -63,12 +65,79 @@ def style(fig, height=340, month_axis=True):
     return fig
 
 
+# ------------------------------------------------------------------ tema, backup automático, ver backup
+THEME_FILE = Path.cwd() / ".streamlit" / "config.toml"  # o Streamlit lê o tema daqui (pasta onde o painel roda)
+THEME_MARK = "# gerado pelo painel (aba Configurações) — pode apagar para voltar ao padrão"
+
+
+def apply_theme(theme: str) -> bool | None:
+    """Grava o tema na configuração do Streamlit. True = mudou (recarregar a página); None = arquivo próprio."""
+    text = THEME_MARK + "\n" + (f'[theme]\nbase = "{theme}"\n' if theme in ("light", "dark") else "")
+    current = THEME_FILE.read_text() if THEME_FILE.exists() else None
+    if current is not None and THEME_MARK not in current:
+        return None  # configuração escrita à mão: não mexer
+    if current == text:
+        return False
+    THEME_FILE.parent.mkdir(exist_ok=True)
+    THEME_FILE.write_text(text)
+    return True
+
+
+def reload_page() -> None:
+    """O tema só vale para a página carregada depois da mudança: recarrega (após o Streamlit reler o arquivo)."""
+    import streamlit.components.v1 as components
+    components.html("<script>setTimeout(() => window.parent.location.reload(), 1500)</script>", height=0)
+
+
+def backup_label(b: dict) -> str:
+    return f"{b['created']:%d/%m/%Y %H:%M}" + (" · manual" if b["kind"] == "manual" else "")
+
+
+if "booted" not in st.session_state:  # uma vez por visita: tema salvo e backup automático
+    st.session_state.booted = True
+    with db_session() as conn:
+        saved_theme = settings.get(conn, "theme")
+    if apply_theme(saved_theme):
+        st.info("Aplicando o tema salvo…")
+        reload_page()
+        st.stop()
+    try:
+        made = backup.auto()
+        if made:
+            st.toast(f"Backup automático feito ({made.name})")
+    except Exception as e:  # noqa: BLE001 — backup nunca derruba o painel
+        st.toast(f"Backup automático falhou: {e}")
+
+views = {"Dados atuais": None} | {f"Backup de {backup_label(b)}": b["path"] for b in backup.list_backups()}
+if st.session_state.get("view") not in views:
+    st.session_state["view"] = "Dados atuais"
+VIEW = views[st.sidebar.selectbox("Ver dados de", list(views), key="view")]
+DB = backup.open_for_view(VIEW) if VIEW else config.DB_PATH
+
+
+@contextmanager
+def session():
+    """Banco do painel: o atual, ou o backup escolhido em "Ver dados de" (somente leitura)."""
+    try:
+        with db_session(DB, readonly=VIEW is not None) as conn:
+            yield conn
+    except sqlite3.OperationalError as e:
+        if VIEW is not None and "readonly" in str(e):
+            st.error("Você está vendo um backup: nada é gravado. Volte para **Dados atuais** em \"Ver dados de\" "
+                     "para fazer alterações.")
+            st.stop()
+        raise
+
+
+if VIEW:
+    st.warning(f"📦 Você está vendo os dados do **{st.session_state['view'].lower()}** — somente leitura.")
+
 with session() as conn:
     df = analytics.transactions(conn)
 
 page = st.sidebar.radio("Seção", ["Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
-                                  "Empréstimos", "Carro", "Investimentos", "Sincronizar"])
-st.sidebar.caption(f"Base: `{config.DB_PATH}`")
+                                  "Empréstimos", "Carro", "Investimentos", "Sincronizar", "Configurações"])
+st.sidebar.caption(f"Base: `{DB}`")
 
 # ------------------------------------------------------------------ Visão geral
 if page == "Visão geral":
@@ -728,7 +797,8 @@ elif page == "Investimentos":
 elif page == "Sincronizar":
     st.title("Coleta de dados")
     st.write("Fontes: **Pluggy** (Inter + XP via Open Finance) · **Binance** (API só leitura) · "
-             "**PDFs** em `data/inbox/cemig|cesama` · **OFX** em `data/inbox/ofx` (plano B).")
+             f"**Contas** (PDF) em `{config.BILLS_DIR / 'entrada'}` · **OFX** em `data/inbox/ofx` (plano B). "
+             "A sincronização sempre usa os **dados atuais** e faz o backup automático quando vence.")
     status = {
         "Pluggy": bool(config.PLUGGY_CLIENT_ID and config.PLUGGY_ITEM_IDS),
         "Binance": bool(config.BINANCE_API_KEY),
@@ -758,3 +828,62 @@ elif page == "Sincronizar":
         logs = pd.read_sql("SELECT at, source, ok, message FROM sync_log ORDER BY id DESC LIMIT 50", conn)
     st.subheader("Histórico")
     st.dataframe(logs, use_container_width=True, hide_index=True)
+
+# ------------------------------------------------------------------ Configurações
+elif page == "Configurações":
+    st.title("Configurações")
+    with db_session() as conn:  # preferências sempre dos dados atuais, mesmo vendo um backup
+        theme = settings.get(conn, "theme")
+        hours = backup.interval_h(conn)
+        due = backup.next_due(conn)
+
+    st.subheader("Aparência")
+    new_theme = st.radio("Tema", list(settings.THEMES), index=list(settings.THEMES).index(theme),
+                         format_func=settings.THEMES.get, horizontal=True)
+    st.caption("Vale para todos que usam este painel. \"Seguir o sistema\" usa o tema do computador ou celular.")
+    if new_theme != theme:
+        with db_session() as conn:
+            settings.set_(conn, "theme", new_theme)
+        res = apply_theme(new_theme)
+        if res is None:
+            st.warning(f"O arquivo `{THEME_FILE}` tem configuração própria; o tema não foi alterado.")
+        else:
+            st.info("Aplicando o tema…")
+            reload_page()
+            st.stop()
+
+    st.subheader("Backup")
+    choices = settings.BACKUP_CHOICES
+    new_hours = st.selectbox("Backup automático", list(choices), format_func=choices.get,
+                             index=list(choices).index(hours) if hours in choices else list(choices).index(24))
+    if new_hours != hours:
+        with db_session() as conn:
+            settings.set_(conn, "backup_interval_h", new_hours)
+        st.rerun()
+    if due is None:
+        st.caption("Backup automático desligado — use o botão abaixo quando quiser.")
+    else:
+        when = "na próxima vez que o painel abrir ou a sincronização rodar" if due <= datetime.now() else f"a partir de {due:%d/%m/%Y %H:%M}"
+        st.caption(f"O próximo backup automático é feito {when}. Ele acontece quando o painel abre ou a sincronização "
+                   f"roda (no servidor, a cada 6 h). Ficam os {backup.KEEP_AUTO} automáticos mais recentes; os manuais "
+                   "nunca são apagados sozinhos.")
+    if st.button("💾 Fazer backup agora", type="primary"):
+        made = backup.make("manual")
+        st.success(f"Backup criado: {made.name}")
+
+    items = backup.list_backups()
+    if not items:
+        st.info("Nenhum backup ainda.")
+    else:
+        st.dataframe(pd.DataFrame({"Data": [f"{b['created']:%d/%m/%Y %H:%M}" for b in items],
+                                   "Tipo": ["Manual" if b["kind"] == "manual" else "Automático" for b in items],
+                                   "Tamanho": [f"{b['size'] / 1e6:.1f} MB" if b["size"] >= 1e6 else f"{b['size'] / 1e3:.0f} KB"
+                                               for b in items]}),
+                     use_container_width=True, hide_index=True, height=min(35 * (len(items) + 1) + 3, 300))
+        sel = st.selectbox("Escolha um backup", items, format_func=backup_label)
+        c1, c2 = st.columns(2)
+        c1.download_button("⬇️ Baixar (.zip)", data=sel["path"].read_bytes(), file_name=sel["path"].name,
+                           mime="application/zip", help="Guarde onde quiser: pendrive, nuvem, e-mail.")
+        c2.button("👁️ Ver estes dados no painel", on_click=lambda: st.session_state.update(view=f"Backup de {backup_label(sel)}"),
+                  help="O painel inteiro passa a mostrar os números daquele dia, somente leitura.")
+        st.caption(f"Pasta dos backups: `{backup.backup_dir()}`")

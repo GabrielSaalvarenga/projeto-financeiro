@@ -1,4 +1,4 @@
-"""Linha de comando: python -m financas.cli <sync|contas|recategorize|export|demo>"""
+"""Linha de comando: python -m financas.cli <sync|contas|backup|recategorize|export|demo>"""
 from __future__ import annotations
 
 import sys
@@ -21,6 +21,9 @@ def main(argv: list[str]) -> int:
         for r in res:
             print(f"{'✔' if r['ok'] else '✘'} {r['file']}: {r['message']}")
         print(f"{len(res)} PDF(s) em {config.BILLS_DIR / 'entrada'}")
+    elif cmd == "backup":  # backup manual (o automático roda no sync e ao abrir o painel)
+        from .backup import make
+        print(f"Backup criado: {make('manual')}")
     elif cmd == "recategorize":
         with session() as conn:
             print(f"{recategorize(conn)} transações recategorizadas")

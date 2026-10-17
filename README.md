@@ -20,6 +20,15 @@ Coloque o PDF da fatura em `<pasta de contas>/entrada/` — por padrão `data/co
 fixas, **sem IA**. Deu certo → `importadas/`; não reconheceu ou o total não fechou → `revisar/`, com um `.txt`
 explicando o motivo (lançar pelo formulário do painel). Hoje só a Cemig tem leitor de PDF.
 
+## Backup e Configurações
+Aba **Configurações** do painel: tema (claro, escuro ou seguir o sistema) e recorrência do backup automático
+(padrão 1x ao dia; desligado, 6 h, 12 h ou semanal). Cada backup é um `.zip` com o banco e os PDFs de contas
+importadas, em `<pasta de dados>/backups/`. O automático é feito quando o painel abre ou o `sync` roda, se já
+passou o intervalo (o programa não fica rodando escondido); ficam os 30 mais recentes, e os manuais nunca são
+apagados sozinhos. Backup manual: botão na aba ou `python -m financas.cli backup`; dá para baixar o `.zip` e
+**ver os dados de um backup** no painel inteiro (menu lateral "Ver dados de", somente leitura).
+O tema é gravado em `.streamlit/config.toml` na pasta onde o painel roda (fora do git).
+
 ## Servidor (futuro)
 `docker compose up -d` — painel na porta 8501 + coleta a cada 6 h (inclui a pasta de contas, em `/data/contas`
 dentro do volume). Para usar outra pasta, monte-a no serviço `sync` e defina `FIN_BILLS_DIR`. Ver `docker-compose.yml`.

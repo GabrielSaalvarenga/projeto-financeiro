@@ -159,6 +159,11 @@ CREATE TABLE IF NOT EXISTS user_rules (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS settings (           -- preferências do painel (tema, recorrência do backup)
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     at        TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -177,13 +182,20 @@ def connect(path: Path | str = DB_PATH) -> sqlite3.Connection:
 
 
 @contextmanager
-def session(path: Path | str = DB_PATH):
-    conn = connect(path)
+def session(path: Path | str = DB_PATH, readonly: bool = False):
+    """Conexão com o banco. `readonly` (visualizar um backup): sem criar tabelas e sem gravar nada."""
+    if readonly:
+        conn = sqlite3.connect(f"file:{Path(path).as_posix()}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+    else:
+        conn = connect(path)
     try:
-        conn.executescript(SCHEMA)
-        _migrate(conn)
+        if not readonly:
+            conn.executescript(SCHEMA)
+            _migrate(conn)
         yield conn
-        conn.commit()
+        if not readonly:
+            conn.commit()
     finally:
         conn.close()
 

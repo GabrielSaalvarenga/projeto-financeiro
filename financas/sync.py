@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import shutil
 
-from . import analytics, config
+from . import analytics, backup, config
 from .categorize import propagate_installment_tags, recategorize
 from .connectors import binance, pluggy
 from .db import log_sync, session
@@ -40,4 +40,10 @@ def run_all() -> list[tuple[str, bool, str]]:
         n = analytics.match_loan_payments(conn)
         if n:
             report.append(("empréstimos", True, f"{n} pagamento(s) casado(s) por Pix"))
+    try:  # depois de gravar tudo: o backup do dia já pega a coleta de hoje
+        made = backup.auto()
+        if made:
+            report.append(("backup", True, made.name))
+    except Exception as e:  # noqa: BLE001
+        report.append(("backup", False, str(e)))
     return report
