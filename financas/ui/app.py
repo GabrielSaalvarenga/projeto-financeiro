@@ -833,11 +833,14 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
         if not no_sched:
             a, b = st.columns(2)
             n = a.number_input("Nº de parcelas", min_value=1, step=1, value=1, key="ln_n")
-            first = b.date_input("1º vencimento", key="ln_first")
+            first = b.date_input("1º vencimento", value=(pd.Timestamp(d) + pd.DateOffset(months=1)).date(),
+                                 key=f"ln_first_{d.isoformat()}", help="Padrão: 1 mês depois do empréstimo. "
+                                 "Se for no mesmo dia, a 1ª parcela é uma entrada (sem juros).")
             sched_new = lo.make_schedule(principal, rate, period, comp, int(n), first, start=d) if principal > 0 else []
             if sched_new:
                 total = sum(x for _, x in sched_new)
-                st.info(f"Você vai receber **{brl(total)}** no total em {int(n)}x de **{brl(sched_new[0][1])}**"
+                st.info(f"Você vai receber **{brl(total)}** no total em {int(n)}x de **{brl(sched_new[0][1])}**, "
+                        f"de {sched_new[0][0]:%d/%m/%Y} a {sched_new[-1][0]:%d/%m/%Y}"
                         + (f" (juros de {brl(total - principal)}). Taxa: {rate_equiv(rate, period, comp)}." if rate else
                            " (sem juros)."))
         elif rate:
@@ -988,7 +991,8 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
         bn = b.number_input("Nº de parcelas", min_value=1, step=1, value=12, key="bk_n")
         brate, bper, bcomp = rate_inputs("bk", "composto")
         a, b = st.columns(2)
-        bfirst = a.date_input("1º vencimento", key="bk_first")
+        bfirst = a.date_input("1º vencimento", value=(pd.Timestamp(bdate) + pd.DateOffset(months=1)).date(),
+                              key=f"bk_first_{bdate.isoformat()}")
         binst = b.number_input("Valor da parcela do contrato (opcional)", min_value=0.0, step=10.0, key="bk_inst",
                                help="Se o contrato diz o valor da parcela, informe. Em branco = calculado pela taxa.")
         bnote = st.text_input("Observação", key="bk_note")
