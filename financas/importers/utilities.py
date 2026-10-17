@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from ..db import log_sync
-from . import cemig_pdf
+from . import cemig_pdf, cesama_pdf
 
 COLS = ("provider", "ref_month", "due_date", "amount", "consumption", "unit", "file", "issue_date", "paid_date",
         "days", "tariff_untaxed", "energy_value", "icms", "pis", "cofins", "taxes_total", "public_lighting", "flag",
@@ -23,6 +23,10 @@ def save(conn, bill: dict) -> None:
         f"INSERT INTO utility_bills({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)}) "
         f"ON CONFLICT(provider, ref_month) DO UPDATE SET "
         + ", ".join(f"{c}=excluded.{c}" for c in row if c not in ("provider", "ref_month")), row)
+
+
+def cesama_bill(path: Path) -> dict:
+    return cesama_pdf.parse(path)
 
 
 def cemig_bill(path: Path) -> dict:
@@ -112,7 +116,14 @@ def _derive_cemig(b: dict) -> None:
 
 
 def total_gap(b: dict) -> float | None:
-    """Total da fatura menos a soma das partes (energia com impostos + iluminação + outros itens). Só Cemig."""
-    if b.get("provider") != "cemig" or b.get("amount") is None or b.get("energy_value") is None:
+    """Total da fatura menos a soma das partes. Cemig: energia com impostos + iluminação + outros itens;
+    Cesama: água + esgoto + outros itens (fundo municipal). None quando faltam as partes."""
+    if b.get("amount") is None:
         return None
-    return round(b["amount"] - b["energy_value"] - (b.get("public_lighting") or 0) - (b.get("other_fees") or 0), 2)
+    if b.get("provider") == "cemig" and b.get("energy_value") is not None:
+        parts = b["energy_value"] + (b.get("public_lighting") or 0)
+    elif b.get("provider") == "cesama" and b.get("water") is not None:
+        parts = b["water"] + (b.get("sewer") or 0)
+    else:
+        return None
+    return round(b["amount"] - parts - (b.get("other_fees") or 0), 2)

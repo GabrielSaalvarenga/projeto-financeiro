@@ -503,7 +503,9 @@ elif page == "Contas de consumo":
                       f"média {last12['consumption'].mean():.1f} m³/mês", delta_color="off")
             c3.metric("Preço cheio do m³", brl(last12["amount"].sum() / last12["consumption"].sum()),
                       "tudo incluído", delta_color="off")
-            c4.metric("Impostos", "—", "a Cesama não informa pela API (falta o PDF)", delta_color="off")
+            fundo = last12.dropna(subset=["other_fees"])
+            c4.metric("Impostos", "não destacados", f"fundo municipal: {100 * fundo['other_fees'].sum() / fundo['amount'].sum():.1f}% "
+                      "da conta" if not fundo.empty else "envie o PDF para ver água, esgoto e fundo", delta_color="off")
             a, b = st.columns(2)
             a.subheader("Valor (R$)")
             a.plotly_chart(style(px.bar(ces, x="ref_month", y="amount", color_discrete_sequence=[SERIES[0]],

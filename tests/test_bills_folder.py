@@ -54,3 +54,20 @@ def test_real_cemig_pdf_is_imported_and_keeps_manual_fields():
         (r2,) = bills_folder.import_folder(conn, base, min_age=0)
         n = conn.execute("SELECT COUNT(*) FROM utility_bills WHERE provider='cemig' AND ref_month='2026-08'").fetchone()[0]
     assert r2["ok"] and r2["file"] == "cemig_2026-08-2.pdf" and n == 1
+
+
+REAL_CESAMA = Path(__file__).resolve().parents[1] / "data/inbox/cesama/pdf/cesama_2026-08.pdf"  # fatura real (fora do git)
+
+
+@pytest.mark.skipif(not REAL_CESAMA.exists(), reason="fatura real da Cesama não disponível nesta máquina")
+def test_real_cesama_pdf_is_imported():
+    base = bills_folder.ensure(Path(tempfile.mkdtemp()))
+    shutil.copy(REAL_CESAMA, base / "entrada" / "Cesama out 26.pdf")
+    with session() as conn:
+        (r,) = bills_folder.import_folder(conn, base, min_age=0)
+        b = utilities.load(conn, "cesama", "2026-08")
+    assert r["ok"] and r["file"] == "cesama_2026-08.pdf"
+    assert b["amount"] == 50.49 and b["consumption"] == 6 and b["meter"] == 81 and b["days"] == 30
+    assert b["water"] == 29.95 and b["sewer"] == 18.6 and b["other_fees"] == 1.94
+    assert b["due_date"] == "2026-10-12" and utilities.total_gap(b) == 0
+    assert "matricula" not in str(b).lower() and "EUGENIO" not in str(b)  # dados pessoais não são guardados

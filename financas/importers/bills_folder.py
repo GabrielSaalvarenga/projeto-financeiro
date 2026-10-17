@@ -1,7 +1,7 @@
 """Pasta de contas de consumo: o PDF colocado em `entrada/` é lido e lançado sozinho.
 
 Sem IA: o fornecedor é reconhecido pelo nome escrito na fatura e os valores, por regras fixas
-(`cemig_pdf`). O que não for reconhecido vai para `revisar/` com um .txt explicando o motivo, para
+(`cemig_pdf`, `cesama_pdf`). O que não for reconhecido vai para `revisar/` com um .txt explicando o motivo, para
 lançar pelo formulário do painel. Lançado com sucesso → `importadas/<fornecedor>_<AAAA-MM>.pdf`.
 
 A pasta vem de FIN_BILLS_DIR (padrão: <pasta de dados>/contas) — nada aqui depende da máquina.
@@ -18,10 +18,14 @@ from ..db import log_sync
 from . import cemig_pdf, utilities
 
 SUBDIRS = ("entrada", "importadas", "revisar")
-# nome que aparece no texto da fatura → fornecedor (comparação em maiúsculas)
-PROVIDERS = {"CEMIG": "cemig", "CESAMA": "cesama"}
+# fornecedor → marcas no texto da fatura (maiúsculas). Basta uma das alternativas; cada alternativa exige todos os
+# termos. A Cesama traz o nome só no logotipo (imagem), então vale também o modelo da conta (esgoto + tarifa fixa).
+PROVIDERS = {
+    "cemig": [("CEMIG",)],
+    "cesama": [("CESAMA",), ("ESGOTO", "TRF_FIXA", "FUNDO MUNIC")],
+}
 # fornecedores com leitor de PDF; os demais vão para revisar/
-PARSERS = {"cemig": utilities.cemig_bill}
+PARSERS = {"cemig": utilities.cemig_bill, "cesama": utilities.cesama_bill}
 MAX_GAP = 0.05  # R$ de tolerância entre o total e a soma das partes
 
 
@@ -37,7 +41,7 @@ def ensure(base: Path) -> Path:
 
 def detect_provider(text: str) -> str | None:
     up = text.upper()
-    hits = {prov for name, prov in PROVIDERS.items() if name in up}
+    hits = {prov for prov, alts in PROVIDERS.items() if any(all(t in up for t in alt) for alt in alts)}
     return hits.pop() if len(hits) == 1 else None
 
 
