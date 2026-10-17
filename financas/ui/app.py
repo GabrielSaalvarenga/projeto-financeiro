@@ -668,7 +668,8 @@ elif page == "Empréstimos":
     def rate_inputs(key: str, default_comp: str, allow_none: bool = True):
         """Campos de taxa. Devolve (taxa em fração, 'mes'|'ano', 'simples'|'composto')."""
         if allow_none:
-            with_int = st.radio("Juros", ["Sem juros", "Com juros"], horizontal=True, key=f"{key}_wi") == "Com juros"
+            with_int = st.radio("Esse empréstimo cobra juros?", ["Não, sem juros", "Sim, com juros"], horizontal=True,
+                                key=f"{key}_wi") == "Sim, com juros"
         else:
             with_int = True
         if not with_int:
@@ -676,7 +677,7 @@ elif page == "Empréstimos":
         c1, c2, c3 = st.columns(3)
         pct = c1.number_input("Taxa (%)", min_value=0.0, step=0.1, value=1.0, format="%.3f", key=f"{key}_pct")
         per = c2.radio("Período da taxa", ["ao mês", "ao ano"], horizontal=True, key=f"{key}_per")
-        comp = c3.radio("Tipo de juros", ["simples", "composto"], index=["simples", "composto"].index(default_comp),
+        comp = c3.radio("Cálculo dos juros", ["simples", "composto"], index=["simples", "composto"].index(default_comp),
                         horizontal=True, key=f"{key}_comp",
                         help="Simples: rende só sobre o valor emprestado. Composto: juros sobre juros.")
         return pct / 100, ("mes" if per == "ao mês" else "ano"), comp
@@ -878,7 +879,7 @@ elif page == "Empréstimos":
                 qamt = b.number_input("Valor pago para quitar (R$)", min_value=0.0, step=50.0, key="q_amt")
                 c1, c2 = st.columns(2)
                 qper = "mes" if c1.radio("Mostrar taxa", ["ao mês", "ao ano"], horizontal=True, key="q_per") == "ao mês" else "ano"
-                qcomp = c2.radio("Tipo de juros", ["simples", "composto"], horizontal=True, key="q_comp")
+                qcomp = c2.radio("Cálculo dos juros", ["simples", "composto"], horizontal=True, key="q_comp")
                 if qamt > 0:
                     with session() as conn:
                         ls, rs = analytics.load_loans(conn)
