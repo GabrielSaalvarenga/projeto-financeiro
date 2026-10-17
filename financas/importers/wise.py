@@ -1,6 +1,6 @@
 """Importação única do extrato CSV da Wise (contas EUR + BRL) — viagem de 2026.
 
-Regras aprovadas pelo Alvarenga (2026-10-14):
+Regras aprovadas pelo dono do painel (2026-10-14):
 - Valores em EUR convertidos pelo CUSTO EFETIVO: BRL depositado ÷ EUR obtido nas conversões (tarifas incluídas).
 - Compras no cartão → "Viagem", já descontados os estornos (débito + crédito iguais do mesmo comerciante se anulam).
 - FNAC = MacBook M5 (€ 1.060, líquido do TaxFree) + fone Sony (resto) → "Compra de produtos".
