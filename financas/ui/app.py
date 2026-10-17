@@ -73,7 +73,8 @@ def style(fig, height=340, month_axis=True):
     fig.update_layout(height=height, margin=dict(l=8, r=8, t=24, b=8), legend_title_text="",
                       bargap=0.35, hovermode="x unified" if fig.data and fig.data[0].type == "scatter" else "closest")
     fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)", zeroline=False, tickprefix="R$ ", separatethousands=True)
-    fig.update_xaxes(showgrid=False, type="category" if month_axis else None)
+    fig.update_xaxes(showgrid=False, type="category" if month_axis else None,
+                     **({"tickangle": -90, "dtick": 1} if month_axis else {}))
     return fig
 
 
