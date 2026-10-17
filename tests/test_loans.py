@@ -157,8 +157,24 @@ def test_linha_do_tempo_dos_emprestimos():
             conn.execute(f"DELETE FROM {t}")
         lid = conn.execute("INSERT INTO loans(person, date, principal, rate, rate_period, compounding) "
                            "VALUES ('Duda','2026-01-15',1000,0.02,'mes','composto')").lastrowid
+        conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,'2026-08-15',1100)", (lid,))
         conn.execute("INSERT INTO loan_payments(loan_id, date, amount, directed) VALUES (?,'2026-03-20',500,0)", (lid,))
         who, tot = analytics.loan_timeline(conn, date(2026, 5, 31))
         last = who[who["month"] == "2026-05"].iloc[0]["saldo"]
         assert list(tot["month"])[:3] == ["2026-01", "2026-02", "2026-03"] and tot["emprestado"].iloc[-1] == 1000
-        assert last == pytest.approx(analytics.loan_status(conn, date(2026, 5, 31)).iloc[0]["remaining"], abs=0.01)
+        assert last == pytest.approx(analytics.loan_status(conn, date(2026, 5, 31)).iloc[0]["remaining"], abs=0.01) == 600.0
+
+
+def test_grafico_ignora_emprestimo_sem_data_e_tabela_tem_parcelas():
+    with session() as conn:
+        for t in ("loans", "people"):
+            conn.execute(f"DELETE FROM {t}")
+        a = conn.execute("INSERT INTO loans(person, date, principal) VALUES ('Eva','2026-01-10',1000)").lastrowid
+        for m in (2, 3, 4):
+            conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)", (a, f"2026-0{m}-10", 1000 / 3))
+        conn.execute("INSERT INTO loans(person, date, principal) VALUES ('Fabio','2026-01-10',5000)")
+        who, tot = analytics.loan_timeline(conn, date(2026, 3, 1))
+        assert set(who["person"]) == {"Eva"} and tot["emprestado"].max() == 1000
+        st = analytics.loan_status(conn, date(2026, 3, 1))
+        assert st.set_index("person")["installments"].to_dict()["Eva"] == 3
+        assert st.set_index("person")["installments"].isna()["Fabio"]

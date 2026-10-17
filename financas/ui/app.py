@@ -741,11 +741,12 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             c2.metric("Em atraso", brl(open_["overdue"].sum()))
             c3.metric("Pessoas com saldo", open_["person"].nunique())
             show = loans.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in loans.itertuples()],
-                                tipo=["parcelado" if s else "sem data combinada" for s in loans["scheduled"]])
-            st.dataframe(show[["person", "date", "principal", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
+                                tipo=["parcelado" if s else "sem data combinada" for s in loans["scheduled"]],
+                                installments=[f"{int(v)}x" if pd.notna(v) else "—" for v in loans["installments"]])
+            st.dataframe(show[["person", "date", "principal", "installments", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
                                "next_due", "note", "closed"]]
                          .rename(columns={"person": "pessoa", "date": "data", "principal": "emprestado",
-                                          "paid": "recebido", "interest": "juros", "remaining": "falta",
+                                          "installments": "parcelas", "paid": "recebido", "interest": "juros", "remaining": "falta",
                                           "overdue": "atrasado", "next_due": "próx. venc.", "note": "obs",
                                           "closed": "quitado"})
                          .style.format({"emprestado": brl, "recebido": brl, "juros": brl, "falta": brl,
@@ -753,7 +754,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             with session() as conn:
                 tl_person, tl_total = analytics.loan_timeline(conn, asof)
             if not tl_person.empty:
-                st.subheader("Evolução do que tenho a receber")
+                st.subheader("Evolução do que tenho a receber (empréstimos parcelados)")
                 folded, cmap = fold_categories(tl_person, "person", "saldo")
                 fig = px.bar(folded.groupby(["month", "person"], as_index=False)["saldo"].sum(), x="month", y="saldo",
                              color="person", color_discrete_map=cmap, labels={"month": "", "saldo": "A receber", "person": ""})
@@ -763,7 +764,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                 st.plotly_chart(style(fig, 360), use_container_width=True)
                 st.caption("Barras = quanto cada pessoa ainda deve naquele mês (com juros). Linha = total já emprestado. "
                            "Barra acima da linha = juros a receber; barra abaixo = parte já paga. "
-                           "O último mês usa a data escolhida em *Posição em*.")
+                           "Empréstimos sem data de retorno não entram neste gráfico. O último mês usa a data escolhida em *Posição em*.")
             if not sched.empty:
                 st.subheader("Quando vou receber")
                 st.dataframe(sched[["person", "due_date", "amount", "remaining"]]

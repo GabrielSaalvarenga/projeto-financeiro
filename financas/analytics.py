@@ -210,12 +210,13 @@ def loan_status(conn, today: date | None = None) -> pd.DataFrame:
     df = pd.read_sql("SELECT id, person, date, principal, note, closed, rate, rate_period, compounding "
                      "FROM loans ORDER BY date, id", conn)
     if df.empty:
-        return df.assign(paid=[], remaining=[], overdue=[], next_due=[], scheduled=[], interest=[])
+        return df.assign(paid=[], remaining=[], overdue=[], next_due=[], scheduled=[], interest=[], installments=[])
     ls, rs = load_loans(conn)
     states = loans_mod.replay(ls, rs, today)
     df["paid"] = df["id"].map(lambda i: round(states[i].paid, 2))
     df["remaining"] = df["id"].map(lambda i: round(states[i].balance(), 2))
     df["scheduled"] = df["id"].map(lambda i: states[i].scheduled)
+    df["installments"] = df["id"].map(lambda i: len(states[i].loan.schedule) or None)
     df["quitado"] = (df["remaining"] <= loans_mod.EPS) | (df["closed"] == 1)
     df.loc[df["closed"] == 1, "remaining"] = 0.0  # marcado quitado à mão (legado)
     df["interest"] = (df["paid"] + df["remaining"] - df["principal"]).round(2)
@@ -259,8 +260,10 @@ def loan_statement(conn, loan_id: int, today: date | None = None) -> pd.DataFram
 
 
 def loan_timeline(conn, asof: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Foto mensal (fim de cada mês; a última é `asof`/hoje): saldo a receber por pessoa e total emprestado acumulado."""
+    """Foto mensal (fim de cada mês; a última é `asof`/hoje): saldo a receber por pessoa e total emprestado acumulado.
+    Só empréstimos com parcelas combinadas — os sem data de retorno ficam fora do gráfico."""
     ls, rs = load_loans(conn)
+    ls = [l for l in ls if l.schedule]
     if not ls:
         return pd.DataFrame(columns=["month", "person", "saldo"]), pd.DataFrame(columns=["month", "emprestado", "recebido"])
     end = max(asof or date.today(), date.today())
