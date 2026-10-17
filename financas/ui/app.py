@@ -25,14 +25,16 @@ from financas.categorize import (add_rule, all_categories, all_tags, delete_rule
                                  set_manual, set_tag)
 from financas.db import session as db_session  # noqa: E402
 
-# paleta categórica de referência (skill dataviz), em ordem fixa — nunca ciclada
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+from financas.ui import theme as visual  # noqa: E402
+
+SERIES = visual.SERIES  # paleta categórica em ordem fixa — nunca ciclada
 OTHER = "#9a9893"
 TOP_N = 7
 
 ENV_NAME = os.getenv("FIN_ENV_NAME", "")
 st.set_page_config(page_title="[DEV] Painel Financeiro" if ENV_NAME == "dev" else "Painel Financeiro",
                    page_icon="🧪" if ENV_NAME == "dev" else "📊", layout="wide")
+visual.inject_css()
 if ENV_NAME in ("dev", "prod"):  # faixa fixa no topo: impossível confundir os ambientes
     bg, label = (("#d9480f", "🧪 AMBIENTE DE DESENVOLVIMENTO — dados de teste (clone de prod). Nada aqui afeta produção.")
                  if ENV_NAME == "dev" else ("#2b8a3e", "PRODUÇÃO — dados reais"))
@@ -81,10 +83,11 @@ def fold_categories(df: pd.DataFrame, col: str, value: str) -> tuple[pd.DataFram
 
 def style(fig, height=340, month_axis=True):
     fig.update_layout(height=height, margin=dict(l=8, r=8, t=24, b=8), legend_title_text="",
-                      bargap=0.35, hovermode="x unified" if fig.data and fig.data[0].type == "scatter" else "closest")
+                      bargap=0.45, hovermode="x unified" if fig.data and fig.data[0].type == "scatter" else "closest")
     fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)", zeroline=False, tickprefix="R$ ", separatethousands=True)
     fig.update_xaxes(showgrid=False, type="category" if month_axis else None,
                      **({"tickangle": -90, "dtick": 1} if month_axis else {}))
+    visual.style_figure(fig)
     return fig
 
 
@@ -95,7 +98,7 @@ THEME_MARK = "# gerado pelo painel (aba Configurações) — pode apagar para vo
 
 def apply_theme(theme: str) -> bool | None:
     """Grava o tema na configuração do Streamlit. True = mudou (recarregar a página); None = arquivo próprio."""
-    text = THEME_MARK + "\n" + (f'[theme]\nbase = "{theme}"\n' if theme in ("light", "dark") else "")
+    text = THEME_MARK + "\n" + visual.config_text(theme)
     current = THEME_FILE.read_text() if THEME_FILE.exists() else None
     if current is not None and THEME_MARK not in current:
         return None  # configuração escrita à mão: não mexer
@@ -253,13 +256,13 @@ elif page == "Gastos":
         st.subheader("Ranking no período")
         rank = win.groupby("category")["value"].agg(["sum", "count"]).sort_values("sum", ascending=False)
         rank["média/mês"] = rank["sum"] / win["month"].nunique()
-        st.dataframe(rank.rename(columns={"sum": "total", "count": "lançamentos"})
+        visual.table(rank.rename(columns={"sum": "total", "count": "lançamentos"})
                      .style.format({"total": brl, "média/mês": brl}), use_container_width=True)
     with right:
         st.subheader("Recorrentes detectados")
         st.caption("Pix e cobranças que se repetem quase todo mês com valor parecido.")
         rec = analytics.recurring(df)
-        st.dataframe(rec.rename(columns={"key": "descrição", "category": "categoria", "monthly": "valor/mês",
+        visual.table(rec.rename(columns={"key": "descrição", "category": "categoria", "monthly": "valor/mês",
                                          "hits": "meses", "last": "último"})
                      .style.format({"valor/mês": brl}), use_container_width=True, hide_index=True)
 
@@ -270,7 +273,7 @@ elif page == "Gastos":
     if q:
         show = show[(show["description"].fillna("") + " " + show["counterparty"].fillna(""))
                     .str.contains(q, case=False)]
-    st.dataframe(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
+    visual.table(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
         ["date", "description", "counterparty", "category", "tag", "value", "institution", "installment_number",
          "total_installments"]].rename(columns={"tag": "subdivisão"})
         .style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}, na_rep=""),
@@ -332,7 +335,7 @@ elif page == "Gastos":
         agg = tagged.groupby("tag").agg(custo=("amount", lambda x: -x.sum()), lançamentos=("amount", "size"),
                                         início=("date", "min"), fim=("date", "max"),
                                         categorias=("category", lambda x: ", ".join(sorted(set(x))))).reset_index()
-        st.dataframe(agg.rename(columns={"tag": "subdivisão"}).sort_values("início", ascending=False)
+        visual.table(agg.rename(columns={"tag": "subdivisão"}).sort_values("início", ascending=False)
                      .style.format({"custo": brl, "início": lambda d: d.strftime("%d/%m/%Y"),
                                     "fim": lambda d: d.strftime("%d/%m/%Y")}), use_container_width=True, hide_index=True)
 
@@ -340,7 +343,7 @@ elif page == "Gastos":
         mine = pd.read_sql("SELECT pattern, category, created_at FROM user_rules ORDER BY created_at DESC", conn)
     if not mine.empty:
         with st.expander(f"Minhas regras ({len(mine)})"):
-            st.dataframe(mine.rename(columns={"pattern": "nome", "category": "categoria", "created_at": "criada em"}),
+            visual.table(mine.rename(columns={"pattern": "nome", "category": "categoria", "created_at": "criada em"}),
                          use_container_width=True, hide_index=True)
             # em form: escolher a regra não recarrega a página (senão o expander fecha e esconde o botão)
             with st.form("delete_rule"):
@@ -389,7 +392,7 @@ elif page == "Cartão":
         oi = card["open_installments"]
         if not oi.empty:
             st.markdown("**Compras parceladas em aberto**")
-            st.dataframe(oi.sort_values("to_pay", ascending=False)[
+            visual.table(oi.sort_values("to_pay", ascending=False)[
                 ["date", "description", "installment_number", "total_installments", "value", "remaining", "to_pay"]]
                 .rename(columns={"date": "última parcela", "description": "compra", "installment_number": "parcela",
                                  "total_installments": "de", "value": "valor parcela", "remaining": "faltam",
@@ -403,10 +406,16 @@ elif page == "Previsão":
     n = st.slider("Meses", 3, 12, 6)
     with session() as conn:
         fc = analytics.forecast(conn, n)
-    st.caption("Salário = mediana dos últimos 3 meses fechados · Recorrentes = Pix/assinaturas detectados · "
-               "Cemig/Cesama = mesmo mês do ano anterior (ou média 3m) · Parcelas = compras parceladas já feitas · "
-               "Variáveis = mediana do resto · A receber = parcelas combinadas dos empréstimos · "
-               "Benefícios (Flash) = rendas fora do banco cadastradas abaixo. Mesada não entra (conservador).")
+    visual.notes("Como a previsão é calculada", [
+        "**Salário**: mediana dos últimos 3 meses fechados.",
+        "**Recorrentes**: Pix e assinaturas detectados.",
+        "**Cemig/Cesama**: mesmo mês do ano anterior (ou média de 3 meses).",
+        "**Parcelas**: compras parceladas já feitas.",
+        "**Variáveis**: mediana do resto dos gastos.",
+        "**A receber**: parcelas combinadas dos empréstimos.",
+        "**Benefícios (Flash)**: rendas fora do banco, cadastradas abaixo.",
+        "A mesada não entra (visão conservadora).",
+    ], expanded=False)
     out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Empréstimo (banco)", "Variáveis (média)"]
     long = fc.melt("month", value_vars=out_cols, var_name="Componente", value_name="Valor")
     fig = px.bar(long, x="month", y="Valor", color="Componente",
@@ -415,7 +424,7 @@ elif page == "Previsão":
                     name="Entradas previstas", line=dict(color=SERIES[6], width=2), marker=dict(size=8))
     st.plotly_chart(style(fig, 380), use_container_width=True)
     money = [c for c in fc.columns if c != "month"]
-    st.dataframe(fc.style.format({c: brl for c in money}), use_container_width=True, hide_index=True)
+    visual.table(fc.style.format({c: brl for c in money}), use_container_width=True, hide_index=True)
 
     st.subheader("Rendas fora do banco")
     st.caption("Valores fixos que o Open Finance não enxerga (ex.: benefícios no Flash). Entram só na previsão; "
@@ -423,7 +432,7 @@ elif page == "Previsão":
     with session() as conn:
         oi = pd.read_sql("SELECT id, name, amount, day, category, active, note FROM other_income ORDER BY day", conn)
     if not oi.empty:
-        st.dataframe(oi.drop(columns="id").rename(columns={"name": "nome", "amount": "valor/mês", "day": "dia",
+        visual.table(oi.drop(columns="id").rename(columns={"name": "nome", "amount": "valor/mês", "day": "dia",
                                                            "category": "categoria", "active": "ativa", "note": "obs"})
                      .style.format({"valor/mês": brl}), use_container_width=True, hide_index=True)
     with st.form("other_income"):
@@ -510,7 +519,7 @@ elif page == "Contas de consumo":
 
             st.subheader("Mês a mês")
             t = cem.iloc[::-1]
-            st.dataframe(pd.DataFrame({
+            visual.table(pd.DataFrame({
                 "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
                 "kWh": t["consumption"].round().astype("Int64"), "kWh vs ant.": t["cons_var"].map(pct),
                 "kWh/dia": t["daily"].map(fmt(".1f")), "Puro R$/kWh": t["tariff_untaxed"].map(fmt(".4f")),
@@ -562,7 +571,7 @@ elif page == "Contas de consumo":
             st.caption("Com 3 a 6 m³ por mês, a conta ficou entre R\\$ 33 e R\\$ 51 no período.")
             st.subheader("Mês a mês")
             t = ces.iloc[::-1]
-            st.dataframe(pd.DataFrame({
+            visual.table(pd.DataFrame({
                 "Mês": t["ref_month"], "Total": t["amount"].map(brl), "vs mês ant.": t["amount_var"].map(pct),
                 "m³": t["consumption"].round().astype("Int64"), "R$/m³": t["price_full"].map(brl),
                 "Emissão": t["issue_date"], "Vencimento": t["due_date"], "Pago em": t["paid_date"],
@@ -767,7 +776,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             show = loans.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in loans.itertuples()],
                                 tipo=["parcelado" if s else "sem data combinada" for s in loans["scheduled"]],
                                 installments=[f"{int(v)}x" if pd.notna(v) else "—" for v in loans["installments"]])
-            st.dataframe(show[["person", "date", "principal", "installments", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
+            visual.table(show[["person", "date", "principal", "installments", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
                                "next_due", "note", "closed"]]
                          .rename(columns={"person": "pessoa", "date": "data", "principal": "emprestado",
                                           "installments": "parcelas", "paid": "recebido", "interest": "juros", "remaining": "falta",
@@ -786,12 +795,14 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                                 line=dict(color=SERIES[6], width=2), marker=dict(size=7))
                 fig.update_layout(barmode="stack")
                 st.plotly_chart(style(fig, 360), use_container_width=True)
-                st.caption("Barras = quanto cada pessoa ainda deve naquele mês (com juros). Linha = total já emprestado. "
-                           "Barra acima da linha = juros a receber; barra abaixo = parte já paga. "
-                           "Empréstimos sem data de retorno não entram neste gráfico. O último mês usa a data escolhida em *Posição em*.")
+                visual.notes("Como ler o gráfico", [
+                    "**Barras**: quanto cada pessoa ainda deve naquele mês, com juros.",
+                    "**Linha**: total já emprestado. Barra acima da linha = juros a receber; abaixo = parte já paga.",
+                    "Empréstimos sem data de retorno não entram. O último mês usa a data escolhida em *Posição em*.",
+                ], expanded=False)
             if not sched.empty:
                 st.subheader("Quando vou receber")
-                st.dataframe(sched[["person", "due_date", "amount", "remaining"]]
+                visual.table(sched[["person", "due_date", "amount", "remaining"]]
                              .rename(columns={"person": "pessoa", "due_date": "vencimento", "amount": "parcela",
                                               "remaining": "em aberto"})
                              .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
@@ -799,7 +810,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                 st.subheader("Recebimentos")
                 pays["como"] = pays.apply(lambda r: "direto no empréstimo" if r["directed"] else
                                           f"baixa {'dos mais recentes' if r['order_mode'] == 'recentes' else 'dos mais antigos'} primeiro", axis=1)
-                st.dataframe(pays[["person", "date", "amount", "como", "note"]]
+                visual.table(pays[["person", "date", "amount", "como", "note"]]
                              .rename(columns={"person": "pessoa", "date": "data", "amount": "valor", "note": "obs"})
                              .style.format({"valor": brl}), use_container_width=True, hide_index=True)
         else:
@@ -814,9 +825,13 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                 pick_l = lab[st.selectbox("Empréstimo", list(lab), key="memo_loan")]
                 with session() as conn:
                     memo = analytics.loan_statement(conn, pick_l, asof)
-                st.caption("Juros simples: juros = principal em aberto × taxa × períodos. Composto: juros = saldo × ((1+taxa)^períodos − 1). "
-                           "Períodos = meses de calendário completos + dias que sobram ÷ 30,4375 (taxa ao ano: meses ÷ 12). Recebimento paga juros primeiro, depois principal.")
-                st.dataframe(memo.style.format({"períodos": "{:.6f}", "juros": brl, "pago": brl, "saldo": brl}),
+                visual.notes("Como os juros são calculados", [
+                    "**Juros simples**: principal em aberto × taxa × períodos.",
+                    "**Juros compostos**: saldo × ((1 + taxa)^períodos − 1).",
+                    "**Períodos**: meses de calendário completos + dias que sobram ÷ 30,4375 (taxa ao ano: meses ÷ 12).",
+                    "Cada recebimento paga primeiro os juros, depois o principal.",
+                ], expanded=False)
+                visual.table(memo.style.format({"períodos": "{:.6f}", "juros": brl, "pago": brl, "saldo": brl}),
                              use_container_width=True, hide_index=True)
 
         # ---------------- novo empréstimo
@@ -928,7 +943,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                                       "depois do recebimento": after[l.id].balance()}
                                      for l in ls if l.person == who and before[l.id].balance() > lo.EPS])
                 st.markdown("**Como vai ficar:**")
-                st.dataframe(prev.style.format({"falta hoje": brl, "depois do recebimento": brl}),
+                visual.table(prev.style.format({"falta hoje": brl, "depois do recebimento": brl}),
                              use_container_width=True, hide_index=True)
                 sobra = ramt - sum(after[l.id].paid - before[l.id].paid for l in ls if l.person == who)
                 if sobra > 0.01:
@@ -990,7 +1005,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             c1.metric("Falta pagar (todos)", brl(bl["remaining"].sum()))
             c2.metric("Parcelas em aberto", int(bl["installments_left"].sum()))
             show = bl.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in bl.itertuples()])
-            st.dataframe(show[["bank", "date", "principal", "taxa", "installments", "installments_left", "total", "paid",
+            visual.table(show[["bank", "date", "principal", "taxa", "installments", "installments_left", "total", "paid",
                                "remaining", "note"]]
                          .rename(columns={"bank": "banco", "date": "data", "principal": "valor tomado",
                                           "installments": "parcelas", "installments_left": "faltam", "total": "total do contrato",
@@ -999,7 +1014,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                          use_container_width=True, hide_index=True)
             if not bopen.empty:
                 st.subheader("Parcelas em aberto")
-                st.dataframe(bopen[["bank", "due_date", "amount", "remaining"]]
+                visual.table(bopen[["bank", "due_date", "amount", "remaining"]]
                              .rename(columns={"bank": "banco", "due_date": "vencimento", "amount": "parcela",
                                               "remaining": "em aberto"})
                              .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
@@ -1152,7 +1167,7 @@ elif page == "Carro":
             fig.update_yaxes(tickprefix="")
             st.subheader("km/L por abastecimento")
             st.plotly_chart(style(fig, 260, month_axis=False), use_container_width=True)
-        st.dataframe(ev.sort_values("date", ascending=False).style.format({"amount": brl}),
+        visual.table(ev.sort_values("date", ascending=False).style.format({"amount": brl}),
                      use_container_width=True, hide_index=True)
 
     a, b, c = st.columns(3)
@@ -1201,7 +1216,7 @@ elif page == "Investimentos":
     for src, grp in hold.groupby("source"):
         st.subheader(f"{src.upper()} — {brl(grp['value_brl'].sum())}  ·  posição de {grp['snapshot'].iloc[0]}")
         cols = ["asset", "asset_type", "quantity", "price_usd", "value_brl"]
-        st.dataframe(grp[cols].rename(columns={"asset": "ativo", "asset_type": "tipo", "quantity": "qtd",
+        visual.table(grp[cols].rename(columns={"asset": "ativo", "asset_type": "tipo", "quantity": "qtd",
                                                "price_usd": "preço US$", "value_brl": "valor"})
                      .style.format({"valor": brl, "preço US$": "{:,.2f}", "qtd": "{:,.8g}"}, na_rep="—"),
                      use_container_width=True, hide_index=True)
@@ -1240,7 +1255,7 @@ elif page == "Sincronizar":
     with session() as conn:
         logs = pd.read_sql("SELECT at, source, ok, message FROM sync_log ORDER BY id DESC LIMIT 50", conn)
     st.subheader("Histórico")
-    st.dataframe(logs, use_container_width=True, hide_index=True)
+    visual.table(logs, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------------------ Configurações
 elif page == "Configurações":
@@ -1267,10 +1282,12 @@ elif page == "Configurações":
 
     st.subheader("Conexões")
     from financas import connections
-    st.caption(f"As chaves ficam no arquivo `{config.ENV_FILE.name}` desta instalação (nunca no banco nem no backup) e "
-               "não são mostradas de novo depois de salvas. Só é salvo o que passar no teste, que faz apenas consultas "
-               "de leitura. Atenção: quem abre este painel pode trocar as chaves — num servidor compartilhado, o "
-               "painel vai precisar de senha.")
+    visual.notes(None, [
+        f"As chaves ficam no arquivo `{config.ENV_FILE.name}` desta instalação, nunca no banco nem no backup.",
+        "Depois de salvas, elas não são mostradas de novo.",
+        "Só é salvo o que passar no teste, que faz apenas consultas de leitura.",
+        "**Atenção:** quem abre este painel pode trocar as chaves. Num servidor compartilhado, o painel vai precisar de senha.",
+    ])
     for src in connections.SOURCES:
         cur = connections.current(src)
         with st.expander(f"{'✅' if connections.is_configured(src) else '⚪'} {src.name}"):
@@ -1319,9 +1336,11 @@ elif page == "Configurações":
         st.caption("Backup automático desligado — use o botão abaixo quando quiser.")
     else:
         when = "na próxima vez que o painel abrir ou a sincronização rodar" if due <= datetime.now() else f"a partir de {due:%d/%m/%Y %H:%M}"
-        st.caption(f"O próximo backup automático é feito {when}. Ele acontece quando o painel abre ou a sincronização "
-                   f"roda (no servidor, a cada 6 h). Ficam os {backup.KEEP_AUTO} automáticos mais recentes; os manuais "
-                   "nunca são apagados sozinhos.")
+        visual.notes(None, [
+            f"O próximo backup automático é feito {when}.",
+            "Ele acontece quando o painel abre ou a sincronização roda (no servidor, a cada 6 h).",
+            f"Ficam os {backup.KEEP_AUTO} automáticos mais recentes; os manuais nunca são apagados sozinhos.",
+        ])
     if st.button("💾 Fazer backup agora", type="primary"):
         made = backup.make("manual")
         st.success(f"Backup criado: {made.name}")
@@ -1330,7 +1349,7 @@ elif page == "Configurações":
     if not items:
         st.info("Nenhum backup ainda.")
     else:
-        st.dataframe(pd.DataFrame({"Data": [f"{b['created']:%d/%m/%Y %H:%M}" for b in items],
+        visual.table(pd.DataFrame({"Data": [f"{b['created']:%d/%m/%Y %H:%M}" for b in items],
                                    "Tipo": ["Manual" if b["kind"] == "manual" else "Automático" for b in items],
                                    "Tamanho": [f"{b['size'] / 1e6:.1f} MB" if b["size"] >= 1e6 else f"{b['size'] / 1e3:.0f} KB"
                                                for b in items]}),
