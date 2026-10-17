@@ -1,7 +1,7 @@
 """Pasta de contas de consumo: o PDF colocado em `entrada/` é lido e lançado sozinho.
 
 Sem IA: o fornecedor é reconhecido pelo nome escrito na fatura e os valores, por regras fixas
-(`cemig_pdf`, `cesama_pdf`). O que não for reconhecido vai para `revisar/` com um .txt explicando o motivo, para
+(`cemig_pdf`, `cesama_pdf`, `edp_pdf`). O que não for reconhecido vai para `revisar/` com um .txt explicando o motivo, para
 lançar pelo formulário do painel. Lançado com sucesso → `importadas/<fornecedor>_<AAAA-MM>.pdf`.
 
 A pasta vem de FIN_BILLS_DIR (padrão: <pasta de dados>/contas) — nada aqui depende da máquina.
@@ -23,9 +23,10 @@ SUBDIRS = ("entrada", "importadas", "revisar")
 PROVIDERS = {
     "cemig": [("CEMIG",)],
     "cesama": [("CESAMA",), ("ESGOTO", "TRF_FIXA", "FUNDO MUNIC")],
+    "edp": [("EDP ES DISTRIB",), ("EDP SAO PAULO",), ("EDP SÃO PAULO",), ("WWW.EDP.COM.BR",)],
 }
 # fornecedores com leitor de PDF; os demais vão para revisar/
-PARSERS = {"cemig": utilities.cemig_bill, "cesama": utilities.cesama_bill}
+PARSERS = {"cemig": utilities.cemig_bill, "cesama": utilities.cesama_bill, "edp": utilities.edp_bill}
 MAX_GAP = 0.05  # R$ de tolerância entre o total e a soma das partes
 
 
@@ -73,7 +74,7 @@ def import_one(conn, base: Path, pdf: Path) -> dict:
     else:
         prov = res["provider"] = detect_provider(text)
         if not prov:
-            res["message"] = "não reconheci o fornecedor (Cemig ou Cesama) no texto da fatura"
+            res["message"] = "não reconheci o fornecedor (Cemig, Cesama ou EDP) no texto da fatura"
         elif prov not in PARSERS:
             res["message"] = f"ainda não existe leitor de PDF para {prov.title()}"
         else:

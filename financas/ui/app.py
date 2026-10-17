@@ -89,6 +89,10 @@ def reload_page() -> None:
     components.html("<script>setTimeout(() => window.parent.location.reload(), 1500)</script>", height=0)
 
 
+ENERGY_PROVIDERS = ("cemig", "edp")  # distribuidoras de energia com leitor de PDF
+PROVIDER_NAMES = {"cemig": "Cemig", "edp": "EDP", "cesama": "Cesama"}
+
+
 def backup_label(b: dict) -> str:
     return f"{b['created']:%d/%m/%Y %H:%M}" + (" · manual" if b["kind"] == "manual" else "")
 
@@ -403,19 +407,25 @@ elif page == "Previsão":
 
 # ------------------------------------------------------------------ Contas de consumo
 elif page == "Contas de consumo":
-    st.title("Cemig e Cesama")
+    st.title("Contas de consumo")
     with session() as conn:
-        cem = analytics.utility_bills(conn, "cemig")
+        energia = {p: analytics.utility_bills(conn, p) for p in ENERGY_PROVIDERS}
         ces = analytics.utility_bills(conn, "cesama")
+    energia = {p: d for p, d in energia.items() if not d.empty} or {"cemig": energia["cemig"]}
+    cem = next(iter(energia.values()))
     if cem.empty and ces.empty:
         st.info("Nenhuma conta ainda. Envie o PDF abaixo ou lance manualmente.")
     esc = lambda txt: txt.replace("$", "\\$")  # noqa: E731  (evita o Streamlit ler R$ como fórmula)
     pct = lambda v: "—" if pd.isna(v) else f"{v:+.0f}%"  # noqa: E731
     fmt = lambda f, suf="": (lambda v: "—" if pd.isna(v) else format(v, f) + suf)  # noqa: E731  (conta sem detalhe não quebra a tabela)
-    tab_e, tab_a = st.tabs(["⚡ Energia (Cemig)", "💧 Água (Cesama)"])
+    tab_e, tab_a = st.tabs([f"⚡ Energia ({', '.join(PROVIDER_NAMES[p] for p in energia)})", "💧 Água (Cesama)"])
 
     with tab_e:
+        if len(energia) > 1:  # mais de uma distribuidora com contas (ex.: mudança de cidade)
+            prov_e = st.radio("Distribuidora", list(energia), format_func=PROVIDER_NAMES.get, horizontal=True)
+            cem = energia[prov_e]
         if not cem.empty:
+            dist = PROVIDER_NAMES[cem["provider"].iloc[0]]
             last12 = cem.tail(12)
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Gasto em 12 meses", brl(last12["amount"].sum()), f"média {brl(last12['amount'].mean())}/mês",
@@ -423,7 +433,7 @@ elif page == "Contas de consumo":
             c2.metric("Consumo em 12 meses", f"{last12['consumption'].sum():,.0f} kWh".replace(",", "."),
                       f"média {last12['consumption'].mean():.0f} kWh/mês", delta_color="off")
             c3.metric("kWh puro (sem impostos)", brl(last12["energy_untaxed"].sum() / last12["consumption"].sum()),
-                      "tarifa da Cemig", delta_color="off")
+                      f"tarifa da {dist}", delta_color="off")
             c4.metric("kWh cheio (tudo incluído)", brl(last12["amount"].sum() / last12["consumption"].sum()),
                       "impostos + iluminação + taxas", delta_color="off")
             c5.metric("Impostos", f"{100 * last12['taxes_total'].sum() / last12['amount'].sum():.1f}% da conta",

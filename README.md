@@ -13,12 +13,12 @@ cp .env.example .env            # ou preencher pela aba Configurações → Cone
 Demonstração com dados fictícios: `FIN_DATA_DIR=data/demo .venv/bin/python -m financas.cli demo` e depois o
 mesmo `streamlit run` com `FIN_DATA_DIR=data/demo`.
 
-## Contas de consumo (Cemig, Cesama)
+## Contas de consumo (Cemig, Cesama, EDP)
 Coloque o PDF da fatura em `<pasta de contas>/entrada/` — por padrão `data/contas/`, ou a pasta definida em
 `FIN_BILLS_DIR` (pode ser uma pasta sincronizada, como OneDrive). No próximo `sync` (ou com
 `python -m financas.cli contas`) o fornecedor é reconhecido pelo texto da fatura e a conta é lançada por regras
 fixas, **sem IA**. Deu certo → `importadas/`; não reconheceu ou o total não fechou → `revisar/`, com um `.txt`
-explicando o motivo (lançar pelo formulário do painel). Há leitor de PDF para a Cemig e a Cesama.
+explicando o motivo (lançar pelo formulário do painel). Há leitor de PDF para a Cemig, a Cesama e a EDP (modelo da EDP Espírito Santo).
 
 ## Backup e Configurações
 Aba **Configurações** do painel: tema (claro, escuro ou seguir o sistema) e recorrência do backup automático

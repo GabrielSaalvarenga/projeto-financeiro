@@ -16,7 +16,8 @@ REAL = Path(__file__).resolve().parents[1] / "data/inbox/cemig/pdf/cemig_2026-08
 def test_detect_provider():
     assert bills_folder.detect_provider("CEMIG DISTRIBUIÇÃO S.A.") == "cemig"
     assert bills_folder.detect_provider("Cesama - Companhia de Saneamento") == "cesama"
-    assert bills_folder.detect_provider("EDP Espírito Santo") is None
+    assert bills_folder.detect_provider("EDP ES DISTRIB DE ENERGIA SA") == "edp"
+    assert bills_folder.detect_provider("Light Serviços de Eletricidade") is None
     assert bills_folder.detect_provider("CEMIG ... CESAMA") is None  # ambíguo → revisar
 
 
@@ -71,3 +72,18 @@ def test_real_cesama_pdf_is_imported():
     assert b["water"] == 29.95 and b["sewer"] == 18.6 and b["other_fees"] == 1.94
     assert b["due_date"] == "2026-10-12" and utilities.total_gap(b) == 0
     assert "matricula" not in str(b).lower() and "EUGENIO" not in str(b)  # dados pessoais não são guardados
+
+
+REAL_EDP = Path(__file__).resolve().parents[1] / "data/inbox/edp/pdf/edp_es_2026-10.pdf"  # fatura de treino (fora do git)
+
+
+@pytest.mark.skipif(not REAL_EDP.exists(), reason="fatura de treino da EDP não disponível nesta máquina")
+def test_edp_training_bill_is_understood():
+    import re
+    b = utilities.edp_bill(REAL_EDP)
+    assert (b["ref_month"], b["due_date"], b["amount"]) == ("2026-10", "2026-10-19", 377.48)
+    assert b["consumption"] == 300 and b["days"] == 32 and (b["meter_prev"], b["meter_curr"]) == (416, 716)
+    assert (b["icms"], b["pis"], b["cofins"], b["public_lighting"]) == (56.26, 3.02, 13.96, 43.53)
+    assert b["flag"] == "Amarela" and b["flag_value"] == 5.89 and b["other_fees"] == 3.0
+    assert utilities.total_gap(b) == 0
+    assert not re.search(r"\d{11}|CPF|CEP|RUA ", str(b))  # sem CPF, endereço, UC (dados pessoais não são lidos)
