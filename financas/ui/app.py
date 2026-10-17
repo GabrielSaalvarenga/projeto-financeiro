@@ -217,8 +217,13 @@ elif page == "Gastos":
         st.info("Sem transações ainda.")
         st.stop()
     months = sorted(sp["month"].unique())
-    sel = st.select_slider("Período", options=months, value=(months[max(0, len(months) - 6)], months[-1]))
-    win = sp[(sp["month"] >= sel[0]) & (sp["month"] <= sel[1])]
+    st.caption("Período — clique nos meses que quer ver (pode escolher vários)")
+    chosen = st.pills("Período", months, selection_mode="multi", default=months[-6:], key="gastos_meses",
+                      label_visibility="collapsed")
+    if not chosen:
+        st.info("Escolha pelo menos um mês acima.")
+        st.stop()
+    win = sp[sp["month"].isin(chosen)]
     folded, cmap = fold_categories(win, "category", "value")
 
     st.subheader("Gasto mensal por categoria")
