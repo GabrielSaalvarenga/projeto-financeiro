@@ -712,15 +712,33 @@ elif page == "Empréstimos":
 
         # ---------------- novo empréstimo
         st.subheader("Novo empréstimo a uma pessoa")
-        NEW = "➕ Cadastrar nova pessoa…"
         out_pix = df[(df.get("amount", pd.Series(dtype=float)) < 0)].sort_values("date", ascending=False).head(40) \
             if not df.empty else pd.DataFrame()
-        a, b = st.columns(2)
-        pick = a.selectbox("Pessoa", people + [NEW], key="ln_person")
-        person = (b.text_input("Nome da nova pessoa", key="ln_newname") if pick == NEW else pick).strip()
-        match = st.text_input("Nome como aparece no Pix dela (opcional)", key="ln_match",
-                              help="Só preencha se ela costuma pagar só por Pix e nunca manda Pix por outros motivos. "
-                                   "Em branco = nenhum Pix é casado sozinho; você lança os recebimentos à mão.")
+
+        @st.dialog("Cadastrar nova pessoa")
+        def new_person_dialog():
+            name = st.text_input("Nome da pessoa")
+            pix = st.text_input("Nome como aparece no Pix dela (opcional)",
+                                help="Só preencha se ela costuma pagar só por Pix e nunca manda Pix por outros motivos. "
+                                     "Em branco = nenhum Pix é casado sozinho; você lança os recebimentos à mão.")
+            if st.button("Salvar pessoa", type="primary"):
+                name = name.strip()
+                if not name:
+                    st.error("Informe o nome.")
+                    return
+                with session() as conn:
+                    conn.execute("INSERT OR IGNORE INTO people(name) VALUES (?)", (name,))
+                    if pix.strip():
+                        conn.execute("UPDATE people SET match_name=? WHERE name=?", (pix.strip(), name))
+                st.session_state["ln_pending_person"] = name  # aplicado antes de o seletor ser criado
+                st.rerun()
+
+        if "ln_pending_person" in st.session_state:
+            st.session_state["ln_person"] = st.session_state.pop("ln_pending_person")
+        a, b = st.columns([3, 1], vertical_alignment="bottom")
+        person = a.selectbox("Pessoa", people, index=None, placeholder="Escolha uma pessoa já cadastrada", key="ln_person") or ""
+        if b.button("➕ Nova pessoa", key="ln_newbtn"):
+            new_person_dialog()
         a, b = st.columns(2)
         d = a.date_input("Data do empréstimo", key="ln_date")
         principal = b.number_input("Valor emprestado (R$)", min_value=0.0, step=50.0, key="ln_principal")
@@ -749,16 +767,14 @@ elif page == "Empréstimos":
                               key="ln_tx")
         if st.button("Registrar empréstimo", type="primary", key="ln_save"):
             if not person or principal <= 0:
-                st.error("Informe a pessoa e o valor emprestado.")
+                st.error("Escolha a pessoa (ou cadastre uma nova) e informe o valor emprestado.")
             else:
                 with session() as conn:
                     conn.execute("INSERT OR IGNORE INTO people(name) VALUES (?)", (person,))
-                    if match.strip():
-                        conn.execute("UPDATE people SET match_name=? WHERE name=?", (match.strip(), person))
                     cur = conn.execute(
                         "INSERT INTO loans(person, match_name, date, principal, note, transaction_id, rate, rate_period, "
                         "compounding) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (person, match.strip() or None, d.isoformat(), principal, note, tx_opts[tx_sel], rate, period, comp))
+                        (person, None, d.isoformat(), principal, note, tx_opts[tx_sel], rate, period, comp))
                     for due, amt in sched_new:
                         conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)",
                                      (cur.lastrowid, due.isoformat(), amt))
