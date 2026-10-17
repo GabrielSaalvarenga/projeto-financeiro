@@ -707,8 +707,11 @@ Taxa **ao ano**: `n` = meses ÷ 12 (ex.: 12 meses → `n` = 1).
 - Compostos: `PV` = −emprestado, `FV` = valor pago, `n` = períodos → `i` = taxa por período.
 - Simples: `valor pago` `ENTER` `emprestado` `÷` `1` `−` `n` `÷` `100` `×` → taxa por período em %.
 
-**Parcelas iguais (Price, juros compostos)**
-`n` = nº de parcelas · `i` = taxa ao mês · `PV` = −valor emprestado · `PMT` → parcela.
+**Parcelas iguais (regra do painel: juros sobre o valor total)**
+Compostos: `n` = meses até o **último** vencimento · `i` = taxa ao mês · `PV` = −valor emprestado · `FV` → **total** a receber;
+parcela = total ÷ nº de parcelas. Ex.: 20.000 a 14% a.a., 12 parcelas → total 22.800, parcela 1.900.
+Simples: total = valor × (1 + taxa × meses até o último vencimento); parcela = total ÷ nº de parcelas.
+*(Não é a Tabela Price: aqui os juros não diminuem conforme as parcelas são pagas.)*
 
 **Com recebimentos no meio:** o painel calcula o saldo até a data do recebimento, abate o valor
 (**primeiro juros, depois principal**) e recomeça dali. Na HP: calcule o saldo, subtraia o recebimento

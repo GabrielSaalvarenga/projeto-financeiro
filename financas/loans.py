@@ -50,10 +50,12 @@ def annual_rate(rate: float, period: str, compounding: str) -> float:
 
 
 def make_schedule(principal: float, rate: float, period: str, compounding: str, n: int, first_due: date,
-                  installment: float | None = None, start: date | None = None) -> list[tuple[date, float]]:
+                  installment: float | None = None, start: date | None = None,
+                  price: bool = False) -> list[tuple[date, float]]:
     """Parcelas iguais, respeitando as datas reais (`start` = data do empréstimo).
-    Composto: valor presente das parcelas = principal (Price, com carência se o 1º vencimento for depois de 1 mês).
-    Simples: principal × (1 + taxa × meses até o último vencimento) ÷ n.
+    REGRA DO USUÁRIO: o juro incide sobre o valor TOTAL pelo prazo todo (até o último vencimento) e a parcela é
+    total ÷ n — composto: principal × (1+i)^meses (igual ao simulador de juros compostos);
+    simples: principal × (1 + i × meses). `price=True` usa a Tabela Price (juros só sobre o saldo) — não usado na tela.
     `installment` (parcela do contrato) tem prioridade. Sem `start`, assume o 1º vencimento 1 mês após o empréstimo."""
     if n <= 0:
         return []
@@ -65,8 +67,10 @@ def make_schedule(principal: float, rate: float, period: str, compounding: str, 
     else:
         if i == 0:
             total = principal
-        elif compounding == "composto":
+        elif compounding == "composto" and price:
             total = principal / sum((1 + i) ** -x for x in t) * n
+        elif compounding == "composto":
+            total = principal * (1 + i) ** t[-1]
         else:
             total = principal * (1 + i * t[-1])
         total = round(total, 2)

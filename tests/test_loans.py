@@ -86,14 +86,21 @@ def test_descobrir_taxa_valor_menor_que_emprestado():
     assert loans.solve_rate([L(1, A)], [], 1, NOW, 900) is None
 
 
-def test_parcelas_price_e_simples():
-    price = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 2, 1))
-    assert len(price) == 12 and price[0][1] == pytest.approx(94.56, abs=0.01)
-    assert sum(a for _, a in price) == pytest.approx(94.56 * 12, abs=0.1)
+def test_parcelas_juros_sobre_o_total():
+    # regra do usuário: composto = principal × (1+i)^meses até o último vencimento, dividido em n parcelas
+    comp = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 2, 1))
+    assert len(comp) == 12 and comp[0][1] == pytest.approx(105.69, abs=0.01)
+    assert sum(a for _, a in comp) == pytest.approx(1268.24, abs=0.02)
     simples = loans.make_schedule(1000, 0.02, "mes", "simples", 10, date(2026, 2, 1))
     assert round(sum(a for _, a in simples), 2) == 1200.0
     assert loans.make_schedule(1000, 0, "mes", "simples", 4, date(2026, 1, 31))[1][0] == date(2026, 2, 28)
     assert sum(a for _, a in loans.make_schedule(1000, 0, "mes", "simples", 3, A)) == 1000
+    # o exemplo do simulador: 20.000 a 14% a.a., 12 meses -> 22.800 (1.900 por mês)
+    ex = loans.make_schedule(20000, 0.14, "ano", "composto", 12, date(2026, 11, 17), start=date(2026, 10, 17))
+    assert sum(a for _, a in ex) == pytest.approx(22800, abs=0.05) and ex[0][1] == pytest.approx(1900, abs=0.01)
+    # Tabela Price continua disponível no código (juros só sobre o saldo)
+    price = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 2, 1), price=True)
+    assert price[0][1] == pytest.approx(94.56, abs=0.01)
 
 
 def test_pessoas_existentes_entram_na_lista_ao_abrir_o_banco():
@@ -147,8 +154,6 @@ def test_parcela_unica_um_ano_depois_usa_a_data_real():
     assert comp == [(date(2027, 10, 17), pytest.approx(1268.24, abs=0.005))]
     simples = loans.make_schedule(1000, 0.02, "mes", "simples", 1, date(2027, 10, 17), start=date(2026, 10, 17))
     assert simples[0][1] == 1240.0
-    price = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 11, 17), start=date(2026, 10, 17))
-    assert price[0][1] == pytest.approx(94.56, abs=0.01)  # igual à Price da HP quando o 1º vence em 1 mês
 
 
 def test_linha_do_tempo_dos_emprestimos():
