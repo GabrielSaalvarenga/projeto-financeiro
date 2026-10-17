@@ -852,6 +852,48 @@ elif page == "Configurações":
             reload_page()
             st.stop()
 
+    st.subheader("Conexões")
+    from financas import connections
+    st.caption(f"As chaves ficam no arquivo `{config.ENV_FILE.name}` desta instalação (nunca no banco nem no backup) e "
+               "não são mostradas de novo depois de salvas. Só é salvo o que passar no teste, que faz apenas consultas "
+               "de leitura. Atenção: quem abre este painel pode trocar as chaves — num servidor compartilhado, o "
+               "painel vai precisar de senha.")
+    for src in connections.SOURCES:
+        cur = connections.current(src)
+        with st.expander(f"{'✅' if connections.is_configured(src) else '⚪'} {src.name}"):
+            st.markdown(src.how_to)
+            with st.form(f"conn_{src.id}"):
+                typed = {}
+                for f in src.fields:
+                    if f.secret:
+                        typed[f.key] = st.text_input(f.label, type="password", help=f.help, placeholder=(
+                            "•••••• salvo — deixe vazio para manter" if cur[f.key] else "cole aqui"))
+                    else:
+                        typed[f.key] = st.text_input(f.label, value=cur[f.key], help=f.help)
+                c1, c2 = st.columns(2)
+                do_test = c1.form_submit_button("🔌 Testar conexão")
+                do_save = c2.form_submit_button("💾 Testar e salvar", type="primary")
+            if do_test or do_save:
+                vals = connections.merged(src, typed)
+                missing = [f.label for f in src.fields if f.key in src.required and not vals[f.key]]
+                if missing:
+                    st.error("Falta preencher: " + ", ".join(missing))
+                else:
+                    try:
+                        with st.spinner("Consultando…"):
+                            msg = src.test(vals)
+                    except Exception as e:  # noqa: BLE001 — mostrar o motivo em vez de quebrar a página
+                        st.error(f"Não funcionou: {e}")
+                        if do_save:
+                            st.warning("Nada foi salvo.")
+                    else:
+                        st.success(msg.replace("$", "\\$"))
+                        if do_save:
+                            changed = connections.save(src, typed)
+                            labels = {f.key: f.label for f in src.fields}
+                            st.success("Salvo: " + ", ".join(labels[k] for k in changed) if changed
+                                       else "Nada mudou — as chaves salvas continuam valendo.")
+
     st.subheader("Backup")
     choices = settings.BACKUP_CHOICES
     new_hours = st.selectbox("Backup automático", list(choices), format_func=choices.get,

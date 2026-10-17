@@ -21,4 +21,5 @@ Documentação da automação no cofre: `09 - Automações/Painel Financeiro - A
 - `financas/analytics.py` — gastos, recorrentes, previsão, empréstimos (casamento por Pix), carro, patrimônio
 - `financas/ui/app.py` — painel Streamlit · `financas/cli.py` — sync | contas | backup | recategorize | export | demo
 - `financas/backup.py` — .zip (banco + PDFs) manual/automático, visualização só leitura · `financas/settings.py` — preferências no banco (tema, recorrência)
+- `financas/connections.py` — fontes configuráveis pela tela (campos, teste só leitura, grava no `.env`; nunca no banco)
 - Dados: `data/financas.db` (SQLite) · inbox OFX: `data/inbox/ofx` · contas: `data/contas/` (ou FIN_BILLS_DIR)

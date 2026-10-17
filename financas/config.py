@@ -7,7 +7,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+# arquivo das chaves (a aba Configurações grava aqui). No Docker, aponte para um arquivo no volume de dados.
+ENV_FILE = Path(os.getenv("FIN_ENV_FILE") or ROOT / ".env").expanduser()
+load_dotenv(ENV_FILE, override=True)  # o que foi salvo pela tela vale mais que variáveis antigas do ambiente
 
 DATA_DIR = Path(os.getenv("FIN_DATA_DIR", ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -17,13 +19,21 @@ INBOX = DATA_DIR / "inbox"
 BILLS_DIR = Path(os.getenv("FIN_BILLS_DIR") or DATA_DIR / "contas").expanduser()
 RULES_FILE = ROOT / "rules.yaml"
 
-PLUGGY_CLIENT_ID = os.getenv("PLUGGY_CLIENT_ID", "")
-PLUGGY_CLIENT_SECRET = os.getenv("PLUGGY_CLIENT_SECRET", "")
-# ids dos "items" (conexões) criados no Meu Pluggy, separados por vírgula
-PLUGGY_ITEM_IDS = [i.strip() for i in os.getenv("PLUGGY_ITEM_IDS", "").split(",") if i.strip()]
+CONNECTION_KEYS = ("PLUGGY_CLIENT_ID", "PLUGGY_CLIENT_SECRET", "PLUGGY_ITEM_IDS", "BINANCE_API_KEY", "BINANCE_API_SECRET")
 
-BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
-BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+
+def load_connections() -> None:
+    """(Re)lê as chaves das conexões do ambiente — chamado de novo quando a aba Configurações salva."""
+    global PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET, PLUGGY_ITEM_IDS, BINANCE_API_KEY, BINANCE_API_SECRET
+    # Pluggy (Open Finance, somente leitura): ids dos "items" (conexões) do Meu Pluggy, separados por vírgula
+    PLUGGY_CLIENT_ID = os.getenv("PLUGGY_CLIENT_ID", "")
+    PLUGGY_CLIENT_SECRET = os.getenv("PLUGGY_CLIENT_SECRET", "")
+    PLUGGY_ITEM_IDS = [i.strip() for i in os.getenv("PLUGGY_ITEM_IDS", "").split(",") if i.strip()]
+    BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
+    BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+
+
+load_connections()
 
 # Nota do cofre que a exportação escreve (única nota declarada em "Escreve em")
 OBSIDIAN_NOTE = os.getenv("OBSIDIAN_NOTE", "")

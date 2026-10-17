@@ -6,7 +6,7 @@ Binance via API, Cemig/Cesama via PDF, empréstimos a receber e custo do carro. 
 ## Rodar
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env            # preencher chaves
+cp .env.example .env            # ou preencher pela aba Configurações → Conexões
 .venv/bin/python -m financas.cli sync
 .venv/bin/streamlit run financas/ui/app.py
 ```
@@ -28,6 +28,12 @@ passou o intervalo (o programa não fica rodando escondido); ficam os 30 mais re
 apagados sozinhos. Backup manual: botão na aba ou `python -m financas.cli backup`; dá para baixar o `.zip` e
 **ver os dados de um backup** no painel inteiro (menu lateral "Ver dados de", somente leitura).
 O tema é gravado em `.streamlit/config.toml` na pasta onde o painel roda (fora do git).
+
+**Conexões** (Pluggy, Binance) também se configuram na aba: cada fonte tem os campos, onde conseguir as chaves e
+"Testar conexão" (só consultas de leitura). Só é salvo o que passa no teste; a Binance recusa chave que possa
+negociar ou sacar. As chaves vão para o `.env` (ou `FIN_ENV_FILE`), nunca para o banco ou o backup, e não são
+exibidas de novo. Fonte nova = mais um item em `financas/connections.py`. Antes de expor o painel num servidor
+compartilhado, ele precisa de senha (quem abre o painel pode trocar as chaves).
 
 ## Servidor (futuro)
 `docker compose up -d` — painel na porta 8501 + coleta a cada 6 h (inclui a pasta de contas, em `/data/contas`
