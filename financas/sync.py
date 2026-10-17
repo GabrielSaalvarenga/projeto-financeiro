@@ -7,7 +7,7 @@ from . import analytics, config
 from .categorize import propagate_installment_tags, recategorize
 from .connectors import binance, pluggy
 from .db import log_sync, session
-from .importers import ofx, utility_pdf
+from .importers import bills_folder, ofx
 
 
 def run_all() -> list[tuple[str, bool, str]]:
@@ -32,9 +32,8 @@ def run_all() -> list[tuple[str, bool, str]]:
             except Exception as e:  # noqa: BLE001
                 report.append(("ofx", False, f"{f.name}: {e}"))
 
-        for bill in utility_pdf.import_inbox(conn, config.INBOX):
-            ok = bool(bill["amount"] and bill["ref_month"])
-            report.append((bill["provider"], ok, f"{bill['file']}: {bill['amount']} ({bill['ref_month']})"))
+        for r in bills_folder.import_folder(conn, config.BILLS_DIR):
+            report.append((r["provider"] or "contas", r["ok"], f"{r['file']}: {r['message']}"))
 
         recategorize(conn, only_missing=True)
         propagate_installment_tags(conn)

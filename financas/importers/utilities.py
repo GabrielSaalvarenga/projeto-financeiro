@@ -31,19 +31,6 @@ def cemig_bill(path: Path) -> dict:
     return b
 
 
-def import_cemig_dir(conn, folder: Path) -> list[dict]:
-    out = []
-    for pdf in sorted(folder.glob("*.pdf")):
-        b = cemig_bill(pdf)
-        if b.get("ref_month") and b.get("amount"):
-            save(conn, b)
-            out.append(b)
-        else:
-            log_sync(conn, "cemig", False, f"{pdf.name}: não reconheci valor/mês — lançar manualmente")
-    log_sync(conn, "cemig", True, f"{len(out)} fatura(s) de {folder.name}")
-    return out
-
-
 def import_cesama_json(conn, path: Path) -> list[dict]:
     """JSON salvo da agência virtual da Cesama: faturas pagas + leituras do hidrômetro."""
     data = json.loads(path.read_text())
@@ -77,6 +64,13 @@ def load(conn, provider: str, ref_month: str | None = None, before: str | None =
     return b
 
 
+def merge(conn, bill: dict) -> dict:
+    """A conta do mês já gravada com os campos preenchidos de `bill` por cima (vazio não apaga)."""
+    b = load(conn, bill["provider"], bill["ref_month"]) or {}
+    b.update({k: v for k, v in bill.items() if v not in (None, "")})
+    return b
+
+
 def manual(conn, bill: dict) -> dict:
     """Conta lançada no formulário do painel.
 
@@ -84,8 +78,7 @@ def manual(conn, bill: dict) -> dict:
     Os derivados (consumo, dias, tarifa, impostos, outros itens) são recalculados a partir do que foi informado.
     """
     p, ref = bill["provider"], bill["ref_month"]
-    b = load(conn, p, ref) or {"file": "manual"}
-    b.update({k: v for k, v in bill.items() if v not in (None, "")})
+    b = merge(conn, {"file": "manual", **bill}) if not load(conn, p, ref) else merge(conn, bill)
     b["unit"] = "kWh" if p == "cemig" else "m3"
     for k in ("due_date", "issue_date", "paid_date", "read_date"):
         if hasattr(b.get(k), "isoformat"):

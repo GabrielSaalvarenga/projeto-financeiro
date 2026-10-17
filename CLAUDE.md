@@ -14,8 +14,10 @@ Documentação da automação no cofre: `09 - Automações/Painel Financeiro - A
 
 ## Mapa
 - `financas/connectors/` — Pluggy (Inter + XP via Open Finance), Binance
-- `financas/importers/` — OFX (plano B), PDFs Cemig/Cesama (heurístico — calibrar com fatura real)
+- `financas/importers/` — OFX (plano B); contas de consumo: `bills_folder` (pasta FIN_BILLS_DIR → entrada/importadas/revisar,
+  fornecedor reconhecido pelo texto, **sem IA**), `cemig_pdf` (leitor da Cemig), `utilities` (gravação com mescla)
+- Portável: nenhum caminho da máquina no código — tudo por variável de ambiente (`.env.example`)
 - `financas/categorize.py` + `rules.yaml` — categorias; `nao_gasto` = movimentações que não contam como gasto
 - `financas/analytics.py` — gastos, recorrentes, previsão, empréstimos (casamento por Pix), carro, patrimônio
 - `financas/ui/app.py` — painel Streamlit · `financas/cli.py` — sync | recategorize | export | demo
-- Dados: `data/financas.db` (SQLite) · inbox: `data/inbox/{cemig,cesama,ofx}`
+- Dados: `data/financas.db` (SQLite) · inbox OFX: `data/inbox/ofx` · contas: `data/contas/` (ou FIN_BILLS_DIR)

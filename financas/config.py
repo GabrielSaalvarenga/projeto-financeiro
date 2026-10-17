@@ -13,6 +13,8 @@ DATA_DIR = Path(os.getenv("FIN_DATA_DIR", ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "financas.db"
 INBOX = DATA_DIR / "inbox"
+# pasta de contas de consumo (entrada/ importadas/ revisar/); pode apontar para uma pasta sincronizada (OneDrive etc.)
+BILLS_DIR = Path(os.getenv("FIN_BILLS_DIR") or DATA_DIR / "contas").expanduser()
 RULES_FILE = ROOT / "rules.yaml"
 
 PLUGGY_CLIENT_ID = os.getenv("PLUGGY_CLIENT_ID", "")

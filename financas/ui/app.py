@@ -454,19 +454,24 @@ elif page == "Contas de consumo":
 
     st.subheader("Adicionar conta")
     with st.expander("Enviar PDF da fatura"):
-        prov = st.selectbox("Fornecedor do PDF", ["cemig", "cesama"])
+        from financas.importers import bills_folder
+        st.caption("O fornecedor é reconhecido pela própria fatura. Também dá para só salvar o PDF na pasta "
+                   f"`{config.BILLS_DIR / 'entrada'}`: ele é lançado na próxima sincronização.")
         files = st.file_uploader("PDF da fatura", type="pdf", accept_multiple_files=True)
         if files and st.button("Importar PDFs"):
-            from financas.importers import utility_pdf
-            (config.INBOX / prov).mkdir(parents=True, exist_ok=True)
+            entrada = bills_folder.ensure(config.BILLS_DIR) / "entrada"
             for f in files:
-                (config.INBOX / prov / f.name).write_bytes(f.getbuffer())
+                (entrada / Path(f.name).name).write_bytes(f.getbuffer())
             with session() as conn:
-                res = utility_pdf.import_inbox(conn, config.INBOX)
+                res = bills_folder.import_folder(conn, config.BILLS_DIR, min_age=0)
             for r in res:
-                (st.success if r["amount"] and r["ref_month"] else st.warning)(
-                    f"{r['file']}: {brl(r['amount'])} · ref {r['ref_month']} · venc {r['due_date']} · "
-                    f"{r['consumption']} {r['unit']}")
+                (st.success if r["ok"] else st.warning)(esc(f"{r['file']}: {r['message']}"))
+        revisar = sorted((config.BILLS_DIR / "revisar").glob("*.pdf")) if (config.BILLS_DIR / "revisar").exists() else []
+        if revisar:
+            st.warning(f"{len(revisar)} PDF(s) aguardando revisão em `{config.BILLS_DIR / 'revisar'}`")
+            for p in revisar:
+                why = p.with_suffix(".txt")
+                st.caption(esc(why.read_text().splitlines()[0] if why.exists() else p.name))
 
     from financas.importers import utilities
     with st.expander("Lançar ou completar uma conta à mão", expanded="bill_msg" in st.session_state):

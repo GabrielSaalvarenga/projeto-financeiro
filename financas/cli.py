@@ -1,4 +1,4 @@
-"""Linha de comando: python -m financas.cli <sync|recategorize|export|demo>"""
+"""Linha de comando: python -m financas.cli <sync|contas|recategorize|export|demo>"""
 from __future__ import annotations
 
 import sys
@@ -13,6 +13,14 @@ def main(argv: list[str]) -> int:
         from .sync import run_all
         for name, ok, msg in run_all():
             print(f"{'✔' if ok else '✘'} {name}: {msg}")
+    elif cmd == "contas":  # só a pasta de contas de consumo (o sync também faz isso)
+        from . import config
+        from .importers import bills_folder
+        with session() as conn:
+            res = bills_folder.import_folder(conn, config.BILLS_DIR, min_age=0)
+        for r in res:
+            print(f"{'✔' if r['ok'] else '✘'} {r['file']}: {r['message']}")
+        print(f"{len(res)} PDF(s) em {config.BILLS_DIR / 'entrada'}")
     elif cmd == "recategorize":
         with session() as conn:
             print(f"{recategorize(conn)} transações recategorizadas")
