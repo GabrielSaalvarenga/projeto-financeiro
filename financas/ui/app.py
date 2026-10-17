@@ -30,7 +30,18 @@ SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a
 OTHER = "#9a9893"
 TOP_N = 7
 
-st.set_page_config(page_title="Painel Financeiro", page_icon="📊", layout="wide")
+ENV_NAME = os.getenv("FIN_ENV_NAME", "")
+st.set_page_config(page_title="[DEV] Painel Financeiro" if ENV_NAME == "dev" else "Painel Financeiro",
+                   page_icon="🧪" if ENV_NAME == "dev" else "📊", layout="wide")
+if ENV_NAME in ("dev", "prod"):  # faixa fixa no topo: impossível confundir os ambientes
+    bg, label = (("#d9480f", "🧪 AMBIENTE DE DESENVOLVIMENTO — dados de teste (clone de prod). Nada aqui afeta produção.")
+                 if ENV_NAME == "dev" else ("#2b8a3e", "PRODUÇÃO — dados reais"))
+    st.markdown(f"""<style>
+      .env-banner {{position:fixed;top:0;left:0;right:0;z-index:999999;background:{bg};color:#fff;text-align:center;
+                   font-weight:700;padding:{'8px' if ENV_NAME == 'dev' else '2px'} 12px;
+                   font-size:{'15px' if ENV_NAME == 'dev' else '11px'};letter-spacing:.3px}}
+      .stApp {{padding-top:{'38px' if ENV_NAME == 'dev' else '18px'}}}
+    </style><div class="env-banner">{label}</div>""", unsafe_allow_html=True)
 
 
 def brl(v) -> str:
