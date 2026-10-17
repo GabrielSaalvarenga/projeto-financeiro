@@ -9,4 +9,5 @@ funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 - Gastos por categoria, cartão, previsão, empréstimos (a receber e dívidas com banco), carro e investimentos.
 - Contas de consumo por PDF, sem IA: Cemig, Cesama e EDP.
 - Backup automático e manual (.zip), tema claro/escuro.
+- Visual novo: cartões, tabelas mais legíveis e textos explicativos em listas curtas.
 - Somente leitura: o painel nunca paga, transfere nem movimenta dinheiro.
