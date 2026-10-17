@@ -32,3 +32,15 @@ services:
       - ./rules.yaml:/app/rules.yaml:ro
     ports: ["8502:8501"]
     restart: unless-stopped
+
+  novo:   # "primeiro uso": pasta de dados vazia, sem chaves — para ver o painel como uma pessoa nova vê
+          # sobe com: docker compose --profile novo up -d novo · zerar: parar, apagar ./data-novo e subir de novo
+    profiles: [novo]
+    build: .
+    container_name: financas-novo
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
+    volumes:
+      - ./data-novo:/data
+      - ./financas:/app/financas
+      - ./rules.yaml:/app/rules.yaml:ro
+    ports: ["8503:8501"]
