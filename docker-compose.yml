@@ -1,16 +1,34 @@
-# Teste: usa uma CÓPIA dos dados (data-teste/), nunca a pasta data/ real.
-# Para produção (ex.: ZimaOS), troque ./data-teste por ./data.
+# Dois ambientes, como no ServiceNow:
+#   prod  (porta 8501) — código aprovado (imagem montada de uma TAG do git em .prod-src/), dados reais em ./data
+#   dev   (porta 8502) — código da pasta de trabalho, dados = CLONE de prod em ./data-dev (pode sujar à vontade)
+# Operação: ./ambientes status | clonar | promover   (ver README)
+name: financas
+
 services:
-  painel:
-    build: .
-    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
-    volumes: [./data-teste:/data, ./rules.yaml:/app/rules.yaml:ro]
-    ports: ["8502:8501"]
+  prod:
+    build: ./.prod-src
+    container_name: financas-prod
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env, FIN_ENV_NAME=prod]
+    volumes: ["./data:/data"]
+    ports: ["8501:8501"]
     restart: unless-stopped
-  sync:   # coleta a cada 6 h — só sobe com: docker compose --profile sync up
+
+  sync-prod:   # coleta a cada 6 h em prod — só sobe com: docker compose --profile sync up -d sync-prod
     profiles: [sync]
-    build: .
-    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
-    volumes: [./data-teste:/data, ./rules.yaml:/app/rules.yaml:ro]
+    build: ./.prod-src
+    container_name: financas-sync-prod
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env, FIN_ENV_NAME=prod]
+    volumes: ["./data:/data"]
     entrypoint: ["/bin/sh", "-c", "while true; do python -m financas.cli sync; sleep 21600; done"]
+    restart: unless-stopped
+
+  dev:
+    build: .
+    container_name: financas-dev
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env, FIN_ENV_NAME=dev]
+    volumes:
+      - ./data-dev:/data
+      - ./financas:/app/financas      # código ao vivo: editou, o Streamlit recarrega
+      - ./rules.yaml:/app/rules.yaml:ro
+    ports: ["8502:8501"]
     restart: unless-stopped

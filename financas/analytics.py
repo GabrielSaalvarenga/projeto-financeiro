@@ -232,10 +232,10 @@ def loan_status(conn, today: date | None = None) -> pd.DataFrame:
     return df.drop(columns="quitado")
 
 
-def loan_schedule_open(conn) -> pd.DataFrame:
+def loan_schedule_open(conn, today: date | None = None) -> pd.DataFrame:
     """Parcelas combinadas ainda em aberto (recebimentos já descontados na ordem escolhida)."""
     ls, rs = load_loans(conn)
-    states = loans_mod.replay(ls, rs, date.today())
+    states = loans_mod.replay(ls, rs, today or date.today())
     rows = []
     for l in ls:
         if l.closed or not l.schedule:
@@ -246,6 +246,16 @@ def loan_schedule_open(conn) -> pd.DataFrame:
                              "remaining": rem, "month": due.isoformat()[:7]})
     cols = ["loan_id", "due_date", "amount", "person", "remaining", "month"]
     return pd.DataFrame(rows, columns=cols).sort_values(["loan_id", "due_date"]).reset_index(drop=True)
+
+
+def loan_statement(conn, loan_id: int, today: date | None = None) -> pd.DataFrame:
+    """Memória de cálculo do empréstimo (sem parcelas fixas): linha a linha, para conferir em calculadora."""
+    ls, rs = load_loans(conn)
+    st = loans_mod.replay(ls, rs, today or date.today())[loan_id]
+    loan = st.loan
+    rows = [{"data": loan.date, "evento": "empréstimo", "dias": 0, "períodos": 0.0, "juros": 0.0, "pago": 0.0,
+             "saldo": loan.principal}] + st.trace
+    return pd.DataFrame(rows)
 
 
 # ---------- Empréstimos que eu devo (banco) ----------

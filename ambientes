@@ -1,0 +1,55 @@
+#!/bin/bash
+# Gerencia os ambientes prod/dev em Docker. Uso: ./ambientes status | clonar | promover [ref] | parar
+set -euo pipefail
+cd "$(dirname "$0")"
+export PATH="/usr/local/bin:$PATH"
+
+cmd_status() {
+  echo "prod: $(cat .prod-src/.versao 2>/dev/null || echo 'nunca promovido')  → http://localhost:8501"
+  echo "dev : código da pasta de trabalho ($(git rev-parse --short HEAD)$(git diff --quiet && git diff --cached --quiet || echo ' + alterações não commitadas'))  → http://localhost:8502"
+  docker compose ps --all --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}'
+}
+
+# Dev = cópia fiel dos DADOS de prod (banco, contas, inbox, chaves). Tudo que existia em dev é descartado.
+cmd_clonar() {
+  [ -f data/financas.db ] || { echo "Sem data/financas.db: nada para clonar."; exit 1; }
+  docker compose stop dev >/dev/null 2>&1 || true
+  rm -rf data-dev && mkdir -p data-dev
+  sqlite3 data/financas.db ".backup 'data-dev/financas.db'"     # cópia consistente mesmo com prod rodando
+  for item in contas inbox; do [ -d "data/$item" ] && cp -R "data/$item" "data-dev/$item"; done
+  [ -f data/.env ] && { cp data/.env data-dev/.env; chmod 600 data-dev/.env; }
+  docker compose up -d --build dev
+  echo "Dev clonado de prod ($(date '+%d/%m/%Y %H:%M')). Dados antigos de dev descartados."
+}
+
+# Leva para prod SÓ código + configuração (regras, esquema do banco); dados de dev são descartados.
+cmd_promover() {
+  local ref="${1:-HEAD}"
+  if [ "$ref" = "HEAD" ]; then
+    git diff --quiet && git diff --cached --quiet || { echo "Há alterações não commitadas: commite antes de promover."; exit 1; }
+    [ -z "$(git ls-files --others --exclude-standard)" ] || { echo "Há arquivos novos não commitados: commite antes."; exit 1; }
+    echo "Rodando testes..."; .venv/bin/python -m pytest -q
+  fi
+  local tag="prod-$(date +%Y%m%d-%H%M)"
+  git tag "$tag" "$ref"
+  if [ -f data/financas.db ]; then
+    mkdir -p data/backups
+    sqlite3 data/financas.db ".backup 'data/backups/antes-de-$tag.db'"
+    echo "Backup de prod antes da promoção: data/backups/antes-de-$tag.db"
+  fi
+  rm -rf .prod-src && mkdir .prod-src
+  git archive "$tag" | tar -x -C .prod-src
+  echo "$tag ($(git rev-parse --short "$tag"))" > .prod-src/.versao
+  [ -f data/.env ] || { [ -f .env ] && cp .env data/.env && chmod 600 data/.env; } || true
+  docker compose up -d --build prod
+  echo "Prod agora em $tag."
+  cmd_clonar
+}
+
+case "${1:-status}" in
+  status) cmd_status ;;
+  clonar) cmd_clonar ;;
+  promover) cmd_promover "${2:-HEAD}" ;;
+  parar) docker compose stop ;;
+  *) echo "Uso: ./ambientes status | clonar | promover [ref-git] | parar"; exit 1 ;;
+esac

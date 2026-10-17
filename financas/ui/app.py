@@ -6,6 +6,7 @@ Não existe nenhuma ação de pagamento ou movimentação de dinheiro.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -141,6 +142,8 @@ with session() as conn:
 
 page = st.sidebar.radio("Seção", ["Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
                                   "Empréstimos", "Carro", "Investimentos", "Sincronizar", "Configurações"])
+if os.getenv("FIN_ENV_NAME") == "dev":
+    st.sidebar.warning("🧪 **DESENVOLVIMENTO** — dados de teste (clone de prod)")
 st.sidebar.caption(f"Base: `{DB}`")
 
 # ------------------------------------------------------------------ Visão geral
@@ -672,9 +675,14 @@ elif page == "Empréstimos":
 
     # ================================================== A RECEBER
     with tab_rec:
+        asof = st.date_input("📅 Posição em (simulação: escolha uma data futura para ver quanto estará devendo)",
+                             value=date.today(), key="asof",
+                             help="Só muda o cálculo na tela (juros acumulados até essa data). Nada é gravado.")
+        if asof != date.today():
+            st.warning(f"Simulação: valores calculados para **{asof:%d/%m/%Y}**, não para hoje.")
         with session() as conn:
-            loans = analytics.loan_status(conn)
-            sched = analytics.loan_schedule_open(conn)
+            loans = analytics.loan_status(conn, asof)
+            sched = analytics.loan_schedule_open(conn, asof)
             pays = pd.read_sql("SELECT p.*, l.person FROM loan_payments p JOIN loans l ON l.id=p.loan_id "
                                "ORDER BY p.date DESC", conn)
             people = [r["name"] for r in conn.execute("SELECT name FROM people ORDER BY name COLLATE NOCASE")]
@@ -709,6 +717,20 @@ elif page == "Empréstimos":
                              .style.format({"valor": brl}), use_container_width=True, hide_index=True)
         else:
             st.info("Nenhum empréstimo registrado.")
+
+        # ---------------- memória de cálculo
+        free_all = loans[~loans["scheduled"]] if not loans.empty else loans
+        if not free_all.empty:
+            with st.expander("🧮 Memória de cálculo (para conferir na HP 12c)"):
+                lab = {f"{r.person} · {r.date} · {brl(r.principal)} · {rate_txt(r.rate, r.rate_period, r.compounding)}": r.id
+                       for r in free_all.itertuples()}
+                pick_l = lab[st.selectbox("Empréstimo", list(lab), key="memo_loan")]
+                with session() as conn:
+                    memo = analytics.loan_statement(conn, pick_l, asof)
+                st.caption("Juros simples: juros = principal em aberto × taxa × períodos. Composto: juros = saldo × ((1+taxa)^períodos − 1). "
+                           "Períodos = dias ÷ 30,4375 (taxa ao mês) ou ÷ 365,25 (ao ano). Recebimento paga juros primeiro, depois principal.")
+                st.dataframe(memo.style.format({"períodos": "{:.6f}", "juros": brl, "pago": brl, "saldo": brl}),
+                             use_container_width=True, hide_index=True)
 
         # ---------------- novo empréstimo
         st.subheader("Novo empréstimo a uma pessoa")
@@ -810,8 +832,8 @@ elif page == "Empréstimos":
                 ref = int(mine["id"].iloc[0])
                 hyp = lo.Receipt(10**9, target or ref, rdate, ramt, directed=target is not None,
                                  order="recentes" if mode.startswith("Mais recentes") else "antigas")
-                after = lo.replay(ls, rs + [hyp], max(date.today(), rdate))
-                before = lo.replay(ls, rs, max(date.today(), rdate))
+                after = lo.replay(ls, rs + [hyp], max(asof, rdate))
+                before = lo.replay(ls, rs, max(asof, rdate))
                 prev = pd.DataFrame([{"empréstimo": f"{l.date} · {brl(l.principal)}", "falta hoje": before[l.id].balance(),
                                       "depois do recebimento": after[l.id].balance()}
                                      for l in ls if l.person == who and before[l.id].balance() > lo.EPS])

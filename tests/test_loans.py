@@ -121,3 +121,15 @@ def test_banco_e_pessoas_no_banco_de_dados():
         conn.execute("INSERT INTO bank_loan_payments(bank_loan_id, date, amount) VALUES (?,'2026-02-05',300)", (bid,))
         bl, openp = analytics.bank_loan_status(conn)
         assert bl.iloc[0]["remaining"] == 900 and len(openp) == 3
+
+
+def test_memoria_de_calculo_bate_com_o_saldo():
+    with session() as conn:
+        for t in ("loans", "people"):
+            conn.execute(f"DELETE FROM {t}")
+        lid = conn.execute("INSERT INTO loans(person, date, principal, rate, rate_period, compounding) "
+                           "VALUES ('Caio','2026-01-01',1000,0.02,'mes','composto')").lastrowid
+        st = analytics.loan_status(conn, date(2026, 7, 1))
+        memo = analytics.loan_statement(conn, lid, date(2026, 7, 1))
+        assert memo.iloc[-1]["saldo"] == pytest.approx(st.iloc[0]["remaining"], abs=0.01)
+        assert st.iloc[0]["remaining"] == pytest.approx(1000 * 1.02 ** (181 / 30.4375), abs=0.01)

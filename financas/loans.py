@@ -100,16 +100,22 @@ class _State:
         self.princ, self.interest, self.at = loan.principal, 0.0, loan.date
         self.paid = 0.0
         self.allocs: list[tuple[date, float]] = []
+        self.trace: list[dict] = []   # memória de cálculo (para conferir na calculadora)
         self.scheduled = bool(loan.schedule)
 
     def accrue(self, to: date) -> None:
         if self.scheduled or to <= self.at:
             return
         t = periods(self.at, to, self.loan.period)
+        before = self.interest
         if self.loan.compounding == "composto":
             self.interest += (self.princ + self.interest) * ((1 + self.loan.rate) ** t - 1)
         else:
             self.interest += self.princ * self.loan.rate * t
+        if self.loan.rate:
+            self.trace.append({"data": to, "evento": "juros do período", "dias": (to - self.at).days,
+                               "períodos": t, "juros": self.interest - before, "pago": 0.0,
+                               "saldo": self.princ + self.interest})
         self.at = to
 
     def balance(self) -> float:
@@ -128,6 +134,9 @@ class _State:
             self.princ -= applied - to_interest
         self.paid += applied
         self.allocs.append((when, applied))
+        if not self.scheduled:
+            self.trace.append({"data": when, "evento": "recebimento", "dias": 0, "períodos": 0.0, "juros": 0.0,
+                               "pago": applied, "saldo": self.princ + self.interest})
         return applied
 
 
