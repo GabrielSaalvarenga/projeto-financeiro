@@ -20,7 +20,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from financas import analytics, backup, config, settings  # noqa: E402
+from financas import __version__, analytics, backup, config, settings  # noqa: E402
 from financas.categorize import (add_rule, all_categories, all_tags, delete_rule, recategorize,  # noqa: E402
                                  set_manual, set_tag)
 from financas.db import session as db_session  # noqa: E402
@@ -162,14 +162,23 @@ if VIEW:
 with session() as conn:
     df = analytics.transactions(conn)
 
-page = st.sidebar.radio("Seção", ["Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
-                                  "Empréstimos", "Carro", "Investimentos", "Sincronizar", "Configurações"])
+if "page" not in st.session_state:  # instalação nova (sem conexões nem dados): abre no passo a passo
+    from financas import connections
+    fresh = df.empty and not any(connections.is_configured(s) for s in connections.SOURCES)
+    st.session_state["page"] = "Começar" if fresh else "Visão geral"
+page = st.sidebar.radio("Seção", ["Começar", "Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
+                                  "Empréstimos", "Carro", "Investimentos", "Sincronizar", "Configurações"], key="page")
 if os.getenv("FIN_ENV_NAME") == "dev":
     st.sidebar.warning("🧪 **DESENVOLVIMENTO** — dados de teste (clone de prod)")
-st.sidebar.caption(f"Base: `{DB}`")
+st.sidebar.caption(f"Base: `{DB}` · versão {__version__}")
+
+# ------------------------------------------------------------------ Começar
+if page == "Começar":
+    from financas.ui import guide
+    guide.render(lambda name: st.session_state.update(page=name))
 
 # ------------------------------------------------------------------ Visão geral
-if page == "Visão geral":
+elif page == "Visão geral":
     st.title("Visão geral")
     with session() as conn:
         hold = analytics.latest_holdings(conn)

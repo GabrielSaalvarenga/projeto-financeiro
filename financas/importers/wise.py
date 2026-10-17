@@ -14,12 +14,16 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import os
+
 import pandas as pd
 
 from ..db import log_sync
 
 ACCOUNT_ID = "wise:viagem-2026"
 MAC_EUR = 1060.00
+# nome do titular como aparece nos envios da Wise (devolução para a própria conta não é gasto)
+OWNER_NAME = os.getenv("FIN_OWNER_NAME", "")
 
 
 def _id(*parts) -> str:
@@ -66,7 +70,8 @@ def plan(folder: Path) -> tuple[list[dict], dict]:
         "Compra de produtos", f"{f['TransferWise ID']}-sony")
 
     transfers = eur[eur["Transaction Details Type"] == "TRANSFER"]
-    own = transfers[transfers["Description"].str.contains("GABRIEL COELHO", case=False, na=False)]
+    own = transfers[transfers["Description"].str.contains(OWNER_NAME, case=False, na=False, regex=False)] if OWNER_NAME \
+        else transfers.iloc[0:0]
     others = transfers.drop(index=own.index)
     for _, r in others.iterrows():
         name = r["Description"].replace("Enviou dinheiro para ", "").title()

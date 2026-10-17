@@ -102,13 +102,13 @@ SOURCES = [
               help="Um por instituição conectada no app Meu Pluggy, separados por vírgula"),
     ], how_to="Conecte seus bancos no app **Meu Pluggy**, crie uma aplicação em **dashboard.pluggy.ai** e copie o "
               "Client ID e o Client Secret. Os IDs das conexões aparecem no Meu Pluggy. Só leitura: o painel nunca "
-              "inicia pagamento ou Pix.",
+              "inicia pagamento ou Pix. Passo a passo completo na aba **Começar**.",
        test=_test_pluggy, required=("PLUGGY_CLIENT_ID", "PLUGGY_CLIENT_SECRET")),
     Source("binance", "Binance — saldos de cripto", [
         Field("BINANCE_API_KEY", "API Key"),
         Field("BINANCE_API_SECRET", "Secret Key"),
     ], how_to="Na Binance: **Perfil → Gerenciamento de API → Criar API**, marcando **apenas \"Enable Reading\"** "
-              "(sem negociar, sem sacar) e, se possível, restringindo ao IP da sua casa.",
+              "(sem negociar, sem sacar) e, se possível, restringindo ao IP da sua casa. Passo a passo na aba **Começar**.",
        test=_test_binance, required=("BINANCE_API_KEY", "BINANCE_API_SECRET")),
 ]
 
