@@ -316,11 +316,36 @@ def bank_loan_status(conn) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 # ---------- Carro ----------
 
+def car_profile(conn) -> dict | None:
+    row = conn.execute("SELECT * FROM car_profile WHERE id=1").fetchone()
+    return dict(row) if row else None
+
+
+def service_outlook(profile: dict | None, events: pd.DataFrame) -> dict:
+    """Quanto falta para a revisão e quanto ela custa por km rodado.
+    Intervalo = km da próxima revisão − km da última manutenção registrada (se houver)."""
+    out: dict = {"km_to_service": None, "service_interval": None, "service_per_km": None}
+    if not profile:
+        return out
+    now, nxt, price = profile.get("km_now"), profile.get("next_service_km"), profile.get("next_service_price")
+    if now is not None and nxt:
+        out["km_to_service"] = nxt - now
+    last = events[(events["kind"] == "manutencao") & events["odometer"].notna()] if not events.empty else events
+    if nxt and len(last):
+        interval = nxt - last["odometer"].max()
+        if interval > 0:
+            out["service_interval"] = interval
+            if price:
+                out["service_per_km"] = price / interval
+    return out
+
+
 def car_summary(conn) -> dict:
     ev = pd.read_sql("SELECT * FROM car_events ORDER BY date, odometer", conn)
     fixed = pd.read_sql("SELECT * FROM car_fixed", conn)
     fipe = pd.read_sql("SELECT * FROM fipe_history ORDER BY ref_month", conn)
-    out: dict = {"events": ev, "fixed": fixed, "fipe": fipe}
+    out: dict = {"events": ev, "fixed": fixed, "fipe": fipe, "profile": car_profile(conn)}
+    out.update(service_outlook(out["profile"], ev))
 
     fuel = ev[ev["kind"] == "combustivel"].dropna(subset=["odometer"])
     full = fuel[fuel["full_tank"] == 1]

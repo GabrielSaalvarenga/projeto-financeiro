@@ -1049,6 +1049,76 @@ elif page == "Carro":
     st.title("Quanto me custa o carro")
     with session() as conn:
         car = analytics.car_summary(conn)
+    prof = car["profile"]
+
+    # ---- cadastro do carro
+    if prof is None:
+        st.info("Cadastre o carro para ver o painel dele.")
+    with st.expander("🚗 Dados do carro" if prof else "🚗 Cadastrar o carro", expanded=prof is None):
+        with st.form("car_profile"):
+            a, b, c = st.columns([2, 2, 1])
+            brand = a.text_input("Marca", value=(prof or {}).get("brand", ""))
+            model = b.text_input("Modelo", value=(prof or {}).get("model", ""))
+            year = c.number_input("Ano", min_value=1980, max_value=date.today().year + 1,
+                                  value=(prof or {}).get("year") or date.today().year, step=1)
+            if st.form_submit_button("Salvar carro"):
+                if not brand.strip() or not model.strip():
+                    st.error("Informe marca e modelo.")
+                else:
+                    with session() as conn:
+                        conn.execute(
+                            "INSERT INTO car_profile(id, brand, model, year) VALUES (1,?,?,?) "
+                            "ON CONFLICT(id) DO UPDATE SET brand=excluded.brand, model=excluded.model, year=excluded.year",
+                            (brand.strip(), model.strip(), int(year)))
+                    st.rerun()
+    if prof is None:
+        st.stop()
+    st.subheader(f"{prof['brand']} {prof['model']}" + (f" · {prof['year']}" if prof.get("year") else ""))
+
+    # ---- painel: situação atual
+    year_now = date.today().year
+    ins = car["fixed"][(car["fixed"]["year"] == year_now) & (car["fixed"]["item"] == "seguro")]["amount"] \
+        if not car["fixed"].empty else []
+    insurance = float(ins.iloc[0]) if len(ins) else None
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Km atual", f"{prof['km_now']:,.0f} km".replace(",", ".") if prof.get("km_now") is not None else "—",
+              help=f"Atualizado em {prof['km_now_date']}" if prof.get("km_now_date") else None)
+    left = car.get("km_to_service")
+    m2.metric("Próxima revisão", f"{prof['next_service_km']:,.0f} km".replace(",", ".") if prof.get("next_service_km") else "—",
+              delta=(f"faltam {left:,.0f} km".replace(",", ".") if left is not None and left >= 0
+                     else f"passou {-left:,.0f} km".replace(",", ".")) if left is not None else None,
+              delta_color="off" if left is None or left >= 0 else "inverse")
+    m3.metric("Preço da revisão", brl(prof.get("next_service_price")),
+              help=(f"≈ {brl(car['service_per_km'])} por km rodado no intervalo de "
+                    f"{car['service_interval']:,.0f} km".replace(",", ".")) if car.get("service_per_km") else
+              "O preço por km aparece quando há uma manutenção registrada com odômetro (intervalo entre revisões).")
+    m4.metric("Seguro (ano)", brl(insurance), delta=f"{brl(insurance / 12)} / mês" if insurance else None, delta_color="off")
+    if car.get("service_per_km"):
+        interval_txt = f"{car['service_interval']:,.0f}".replace(",", ".")
+        st.caption(f"Revisão custa ≈ **{brl(car['service_per_km'])} / km** "
+                   f"({brl(prof['next_service_price'])} ÷ {interval_txt} km desde a última manutenção).")
+
+    with st.expander("✏️ Atualizar km, revisão e seguro"):
+        with st.form("car_status"):
+            a, b = st.columns(2)
+            km_now = a.number_input("Km atual (odômetro)", min_value=0.0, step=100.0, value=float(prof.get("km_now") or 0))
+            ns_km = b.number_input("Km da próxima revisão", min_value=0.0, step=1000.0,
+                                   value=float(prof.get("next_service_km") or 0))
+            c, d = st.columns(2)
+            ns_price = c.number_input("Preço da próxima revisão (R$)", min_value=0.0, step=50.0,
+                                      value=float(prof.get("next_service_price") or 0))
+            ins_v = d.number_input(f"Seguro de {year_now} (R$ no ano)", min_value=0.0, step=100.0,
+                                   value=float(insurance or 0))
+            if st.form_submit_button("Salvar"):
+                with session() as conn:
+                    conn.execute("UPDATE car_profile SET km_now=?, km_now_date=?, next_service_km=?, next_service_price=? "
+                                 "WHERE id=1", (km_now or None, date.today().isoformat() if km_now else None,
+                                                ns_km or None, ns_price or None))
+                    if ins_v:
+                        conn.execute("INSERT OR REPLACE INTO car_fixed(year, item, amount) VALUES (?,?,?)",
+                                     (year_now, "seguro", ins_v))
+                st.rerun()
+    st.divider()
     fuel_card = analytics.spending(df)
     fuel_card = fuel_card[fuel_card["category"] == "Carro - Combustível"] if not fuel_card.empty else fuel_card
 

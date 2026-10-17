@@ -170,6 +170,17 @@ CREATE TABLE IF NOT EXISTS car_fixed (
     UNIQUE(year, item)
 );
 
+CREATE TABLE IF NOT EXISTS car_profile (        -- o carro (uma linha só, id=1) e a situação atual dele
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    brand              TEXT NOT NULL,
+    model              TEXT NOT NULL,
+    year               INTEGER,
+    km_now             REAL,                     -- odômetro atual
+    km_now_date        TEXT,
+    next_service_km    REAL,                     -- odômetro em que a próxima revisão vence
+    next_service_price REAL                      -- preço previsto da próxima revisão
+);
+
 CREATE TABLE IF NOT EXISTS fipe_history (
     ref_month TEXT PRIMARY KEY,              -- AAAA-MM
     value     REAL NOT NULL
