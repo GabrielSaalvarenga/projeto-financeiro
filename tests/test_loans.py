@@ -55,14 +55,14 @@ def test_juros_simples_e_composto_a_12_meses():
     d1 = date(2027, 1, 1)
     simples = loans.replay([L(1, date(2026, 1, 1), rate=0.02, compounding="simples")], [], d1)[1].balance()
     comp = loans.replay([L(1, date(2026, 1, 1), rate=0.02, compounding="composto")], [], d1)[1].balance()
-    assert simples == pytest.approx(1000 * (1 + 0.02 * 365 / 30.4375), rel=1e-6)
-    assert comp == pytest.approx(1000 * 1.02 ** (365 / 30.4375), rel=1e-6)
+    assert simples == pytest.approx(1240.0, abs=1e-6)          # 12 meses exatos
+    assert comp == pytest.approx(1268.2418, abs=1e-3)          # 1000 × 1,02^12 (HP: n=12, i=2, PV=-1000)
     assert comp > simples
 
 
 def test_taxa_ao_ano():
     s = loans.replay([L(1, date(2026, 1, 1), rate=0.12, period="ano")], [], date(2027, 1, 1))[1].balance()
-    assert s == pytest.approx(1000 * (1 + 0.12 * 365 / 365.25), rel=1e-6)
+    assert s == pytest.approx(1120.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("comp", ["simples", "composto"])
@@ -132,4 +132,20 @@ def test_memoria_de_calculo_bate_com_o_saldo():
         st = analytics.loan_status(conn, date(2026, 7, 1))
         memo = analytics.loan_statement(conn, lid, date(2026, 7, 1))
         assert memo.iloc[-1]["saldo"] == pytest.approx(st.iloc[0]["remaining"], abs=0.01)
-        assert st.iloc[0]["remaining"] == pytest.approx(1000 * 1.02 ** (181 / 30.4375), abs=0.01)
+        assert st.iloc[0]["remaining"] == pytest.approx(1126.16, abs=0.01)  # 6 meses exatos
+
+
+def test_meses_de_calendario():
+    assert loans.months_between(date(2026, 10, 17), date(2027, 10, 17)) == 12
+    assert loans.months_between(date(2026, 1, 31), date(2026, 2, 28)) == pytest.approx(1.0, abs=0.04)
+    assert loans.months_between(date(2026, 10, 17), date(2027, 1, 2)) == pytest.approx(2 + 16 / 30.4375)
+    assert loans.months_between(date(2026, 10, 17), date(2026, 10, 17)) == 0
+
+
+def test_parcela_unica_um_ano_depois_usa_a_data_real():
+    comp = loans.make_schedule(1000, 0.02, "mes", "composto", 1, date(2027, 10, 17), start=date(2026, 10, 17))
+    assert comp == [(date(2027, 10, 17), pytest.approx(1268.24, abs=0.005))]
+    simples = loans.make_schedule(1000, 0.02, "mes", "simples", 1, date(2027, 10, 17), start=date(2026, 10, 17))
+    assert simples[0][1] == 1240.0
+    price = loans.make_schedule(1000, 0.02, "mes", "composto", 12, date(2026, 11, 17), start=date(2026, 10, 17))
+    assert price[0][1] == pytest.approx(94.56, abs=0.01)  # igual à Price da HP quando o 1º vence em 1 mês

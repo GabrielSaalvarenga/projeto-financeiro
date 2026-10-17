@@ -688,10 +688,10 @@ elif page == "Empréstimos":
 **Antes de tudo:** `f` `CLX` (limpa registros) · `f` `FIN` (limpa financeiros) · aperte `STO` `EEX` até aparecer **C** no visor
 (sem o **C**, a HP 12C usa juros simples na parte fracionária de `n` e o resultado não bate com o painel).
 
-**Dias entre duas datas:** `g` `D.MY` (formato dd.mmaaaa) → digite a 1ª data `ENTER` a 2ª data → `g` `ΔDYS`.
-
-**Períodos (n)** — é o que o painel usa: *dias ÷ 30,4375* se a taxa é **ao mês**; *dias ÷ 365,25* se é **ao ano**.
-Ex.: 181 dias → `181` `ENTER` `30.4375` `÷` → `n`.
+**Períodos (n)** — é o que o painel usa: *meses de calendário completos* + *dias que sobram ÷ 30,4375*.
+Ex.: 17/10/2026 → 17/10/2027 = **12 meses exatos** → `n` = 12. De 17/10/2026 a 02/01/2027 = 2 meses + 16 dias → `16` `ENTER` `30.4375` `÷` `2` `+` → `n` = 2,5257.
+Taxa **ao ano**: `n` = meses ÷ 12 (ex.: 12 meses → `n` = 1).
+(Dias que sobram: `g` `D.MY`, data1 `ENTER` data2 `g` `ΔDYS`.)
 
 ---
 **Juros compostos (saldo numa data)**
@@ -776,7 +776,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                 with session() as conn:
                     memo = analytics.loan_statement(conn, pick_l, asof)
                 st.caption("Juros simples: juros = principal em aberto × taxa × períodos. Composto: juros = saldo × ((1+taxa)^períodos − 1). "
-                           "Períodos = dias ÷ 30,4375 (taxa ao mês) ou ÷ 365,25 (ao ano). Recebimento paga juros primeiro, depois principal.")
+                           "Períodos = meses de calendário completos + dias que sobram ÷ 30,4375 (taxa ao ano: meses ÷ 12). Recebimento paga juros primeiro, depois principal.")
                 st.dataframe(memo.style.format({"períodos": "{:.6f}", "juros": brl, "pago": brl, "saldo": brl}),
                              use_container_width=True, hide_index=True)
 
@@ -819,7 +819,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             a, b = st.columns(2)
             n = a.number_input("Nº de parcelas", min_value=1, step=1, value=1, key="ln_n")
             first = b.date_input("1º vencimento", key="ln_first")
-            sched_new = lo.make_schedule(principal, rate, period, comp, int(n), first) if principal > 0 else []
+            sched_new = lo.make_schedule(principal, rate, period, comp, int(n), first, start=d) if principal > 0 else []
             if sched_new:
                 total = sum(x for _, x in sched_new)
                 st.info(f"Você vai receber **{brl(total)}** no total em {int(n)}x de **{brl(sched_new[0][1])}**"
@@ -977,7 +977,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
         binst = b.number_input("Valor da parcela do contrato (opcional)", min_value=0.0, step=10.0, key="bk_inst",
                                help="Se o contrato diz o valor da parcela, informe. Em branco = calculado pela taxa.")
         bnote = st.text_input("Observação", key="bk_note")
-        prev = lo.make_schedule(bprin, brate, bper, bcomp, int(bn), bfirst, binst or None) if bprin > 0 else []
+        prev = lo.make_schedule(bprin, brate, bper, bcomp, int(bn), bfirst, binst or None, start=bdate) if bprin > 0 else []
         if prev:
             tot = sum(x for _, x in prev)
             st.info(f"{int(bn)}x de **{brl(prev[0][1])}** — total a pagar **{brl(tot)}** (juros/custos {brl(tot - bprin)}).")

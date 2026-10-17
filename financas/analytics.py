@@ -271,7 +271,8 @@ def bank_loan_status(conn) -> tuple[pd.DataFrame, pd.DataFrame]:
     rows, summary = [], []
     for r in df.itertuples():
         sch = loans_mod.make_schedule(r.principal, r.rate or 0.0, r.rate_period, r.compounding, int(r.installments),
-                                      _d(r.first_due), r.installment_amount if r.installment_amount == r.installment_amount else None)
+                                      _d(r.first_due), r.installment_amount if r.installment_amount == r.installment_amount else None,
+                                      start=_d(r.date))
         opened = loans_mod.open_installments(sch, paid.get(r.id, 0.0) or 0.0)
         total = sum(a for _, a in sch)
         rem = sum(x for _, _, x in opened)

@@ -4,7 +4,8 @@ Funções puras (sem banco) — `analytics.py` carrega os dados e chama aqui.
 
 Convenções:
 - taxa é uma fração por período (0.013 = 1,3%), com `period` = "mes" ou "ano";
-- tempo decorrido em períodos = dias / 30,4375 (mês) ou dias / 365,25 (ano);
+- tempo decorrido = meses de calendário completos + dias que sobram / 30,4375 (17/10 → 17/10 do ano seguinte = 12
+  meses exatos, como `n = 12` na HP 12C); taxa ao ano usa meses / 12;
 - juros simples: rendem só sobre o principal em aberto; composto: rendem sobre o saldo todo (principal + juros);
 - um recebimento paga primeiro os juros acumulados e depois o principal.
 """
@@ -16,13 +17,24 @@ from datetime import date
 import pandas as pd
 
 DAYS_MONTH = 30.4375
-DAYS_YEAR = 365.25
 EPS = 0.005
 
 
+def months_between(d0: date, d1: date) -> float:
+    """Meses de calendário completos entre as datas + dias restantes / 30,4375."""
+    if d1 <= d0:
+        return 0.0
+    m = (d1.year - d0.year) * 12 + (d1.month - d0.month)
+    anchor = (pd.Timestamp(d0) + pd.DateOffset(months=m)).date()
+    if anchor > d1:
+        m -= 1
+        anchor = (pd.Timestamp(d0) + pd.DateOffset(months=m)).date()
+    return m + (d1 - anchor).days / DAYS_MONTH
+
+
 def periods(d0: date, d1: date, period: str) -> float:
-    days = max((d1 - d0).days, 0)
-    return days / (DAYS_YEAR if period == "ano" else DAYS_MONTH)
+    months = months_between(d0, d1)
+    return months / 12 if period == "ano" else months
 
 
 def monthly_rate(rate: float, period: str, compounding: str) -> float:
@@ -38,11 +50,15 @@ def annual_rate(rate: float, period: str, compounding: str) -> float:
 
 
 def make_schedule(principal: float, rate: float, period: str, compounding: str, n: int, first_due: date,
-                  installment: float | None = None) -> list[tuple[date, float]]:
-    """Parcelas iguais. Composto = tabela Price; simples = (principal + juros sobre o principal) / n.
-    `installment` (valor da parcela do contrato) tem prioridade sobre o cálculo."""
+                  installment: float | None = None, start: date | None = None) -> list[tuple[date, float]]:
+    """Parcelas iguais, respeitando as datas reais (`start` = data do empréstimo).
+    Composto: valor presente das parcelas = principal (Price, com carência se o 1º vencimento for depois de 1 mês).
+    Simples: principal × (1 + taxa × meses até o último vencimento) ÷ n.
+    `installment` (parcela do contrato) tem prioridade. Sem `start`, assume o 1º vencimento 1 mês após o empréstimo."""
     if n <= 0:
         return []
+    dues = [(pd.Timestamp(first_due) + pd.DateOffset(months=k)).date() for k in range(n)]
+    t = [months_between(start, d) for d in dues] if start else [float(k + 1) for k in range(n)]
     i = monthly_rate(rate, period, compounding)
     if installment:
         pmt, total = round(installment, 2), round(installment, 2) * n
@@ -50,13 +66,13 @@ def make_schedule(principal: float, rate: float, period: str, compounding: str, 
         if i == 0:
             total = principal
         elif compounding == "composto":
-            total = principal * i / (1 - (1 + i) ** -n) * n
+            total = principal / sum((1 + i) ** -x for x in t) * n
         else:
-            total = principal * (1 + i * n)
+            total = principal * (1 + i * t[-1])
         total = round(total, 2)
         pmt = round(total / n, 2)
     amounts = [pmt] * (n - 1) + [round(total - pmt * (n - 1), 2)]
-    return [((pd.Timestamp(first_due) + pd.DateOffset(months=k)).date(), a) for k, a in enumerate(amounts)]
+    return list(zip(dues, amounts))
 
 
 def open_installments(schedule: list[tuple[date, float]], paid: float) -> list[tuple[date, float, float]]:
