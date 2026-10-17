@@ -682,14 +682,50 @@ elif page == "Empréstimos":
                         help="Simples: rende só sobre o valor emprestado. Composto: juros sobre juros.")
         return pct / 100, ("mes" if per == "ao mês" else "ano"), comp
 
+    def hp12c_help() -> None:
+        with st.popover("ℹ️ Como conferir na HP 12C", use_container_width=True):
+            st.markdown("""
+**Antes de tudo:** `f` `CLX` (limpa registros) · `f` `FIN` (limpa financeiros) · aperte `STO` `EEX` até aparecer **C** no visor
+(sem o **C**, a HP 12C usa juros simples na parte fracionária de `n` e o resultado não bate com o painel).
+
+**Dias entre duas datas:** `g` `D.MY` (formato dd.mmaaaa) → digite a 1ª data `ENTER` a 2ª data → `g` `ΔDYS`.
+
+**Períodos (n)** — é o que o painel usa: *dias ÷ 30,4375* se a taxa é **ao mês**; *dias ÷ 365,25* se é **ao ano**.
+Ex.: 181 dias → `181` `ENTER` `30.4375` `÷` → `n`.
+
+---
+**Juros compostos (saldo numa data)**
+1. `n` = períodos (acima) · `i` = taxa em % (ex.: `2` `i`)
+2. `PV` = valor emprestado com `CHS` (ex.: `1000` `CHS` `PV`)
+3. `FV` → **saldo** (principal + juros) na data.
+
+**Juros simples (saldo numa data)**
+`1000` `ENTER` `2` `%` (juros de 1 período; o 1000 fica guardado) → digite `n` `×` `+` → **saldo**.
+*(Não use `f` `INT`: ela usa ano de 360/365 dias, outra convenção.)*
+
+**Descobrir a taxa na quitação**
+- Compostos: `PV` = −emprestado, `FV` = valor pago, `n` = períodos → `i` = taxa por período.
+- Simples: `valor pago` `ENTER` `emprestado` `÷` `1` `−` `n` `÷` `100` `×` → taxa por período em %.
+
+**Parcelas iguais (Price, juros compostos)**
+`n` = nº de parcelas · `i` = taxa ao mês · `PV` = −valor emprestado · `PMT` → parcela.
+
+**Com recebimentos no meio:** o painel calcula o saldo até a data do recebimento, abate o valor
+(**primeiro juros, depois principal**) e recomeça dali. Na HP: calcule o saldo, subtraia o recebimento
+e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cálculo* mostra cada passo.
+""")
+
     st.title("Empréstimos")
     tab_rec, tab_debt = st.tabs(["💸 Que eu emprestei (a receber)", "🏦 Que eu devo (banco)"])
 
     # ================================================== A RECEBER
     with tab_rec:
-        asof = st.date_input("📅 Posição em (simulação: escolha uma data futura para ver quanto estará devendo)",
+        a_, b_ = st.columns([3, 2], vertical_alignment="bottom")
+        asof = a_.date_input("📅 Posição em (simulação: escolha uma data futura para ver quanto estará devendo)",
                              value=date.today(), key="asof",
                              help="Só muda o cálculo na tela (juros acumulados até essa data). Nada é gravado.")
+        with b_:
+            hp12c_help()
         if asof != date.today():
             st.warning(f"Simulação: valores calculados para **{asof:%d/%m/%Y}**, não para hoje.")
         with session() as conn:
