@@ -17,7 +17,7 @@ def seed() -> None:
     months = [(pd.Period(today, "M") - k) for k in range(6, -1, -1)]
     with session() as conn:
         for t in ("transactions", "accounts", "utility_bills", "holdings", "loans", "loan_schedule",
-                  "loan_payments", "car_events", "car_fixed", "fipe_history", "card_bills", "user_rules",
+                  "loan_payments", "people", "bank_loans", "bank_loan_payments", "car_events", "car_fixed", "fipe_history", "card_bills", "user_rules",
                   "other_income"):
             conn.execute(f"DELETE FROM {t}")
         conn.execute("INSERT INTO accounts(id, source, institution, name, type, balance, balance_date) "

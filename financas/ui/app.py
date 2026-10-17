@@ -372,7 +372,7 @@ elif page == "Previsão":
                "Cemig/Cesama = mesmo mês do ano anterior (ou média 3m) · Parcelas = compras parceladas já feitas · "
                "Variáveis = mediana do resto · A receber = parcelas combinadas dos empréstimos · "
                "Benefícios (Flash) = rendas fora do banco cadastradas abaixo. Mesada não entra (conservador).")
-    out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Variáveis (média)"]
+    out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Empréstimo (banco)", "Variáveis (média)"]
     long = fc.melt("month", value_vars=out_cols, var_name="Componente", value_name="Valor")
     fig = px.bar(long, x="month", y="Valor", color="Componente",
                  color_discrete_map={c: SERIES[i] for i, c in enumerate(out_cols)}, labels={"month": ""})
@@ -638,89 +638,291 @@ elif page == "Contas de consumo":
 
 # ------------------------------------------------------------------ Empréstimos
 elif page == "Empréstimos":
-    st.title("Empréstimos a receber")
-    with session() as conn:
-        loans = analytics.loan_status(conn)
-        sched = analytics.loan_schedule_open(conn)
-        pays = pd.read_sql("SELECT p.*, l.person FROM loan_payments p JOIN loans l ON l.id=p.loan_id ORDER BY p.date DESC",
-                           conn)
-    if not loans.empty:
-        open_ = loans[loans["closed"] == 0]
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total a receber", brl(open_["remaining"].sum()))
-        c2.metric("Em atraso", brl(open_["overdue"].sum()))
-        c3.metric("Pessoas", open_["person"].nunique())
-        st.dataframe(loans[["person", "date", "principal", "paid", "remaining", "overdue", "next_due", "note", "closed"]]
-                     .rename(columns={"person": "pessoa", "date": "data", "principal": "emprestado", "paid": "recebido",
-                                      "remaining": "falta", "overdue": "atrasado", "next_due": "próx. venc.",
-                                      "note": "obs", "closed": "quitado"})
-                     .style.format({"emprestado": brl, "recebido": brl, "falta": brl, "atrasado": brl}),
-                     use_container_width=True, hide_index=True)
-        if not sched.empty:
-            st.subheader("Quando vou receber")
-            st.dataframe(sched[["person", "due_date", "amount", "remaining"]]
-                         .rename(columns={"person": "pessoa", "due_date": "vencimento", "amount": "parcela",
-                                          "remaining": "em aberto"})
-                         .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
-        if not pays.empty:
-            st.subheader("Recebimentos")
-            st.dataframe(pays[["person", "date", "amount", "note"]].style.format({"amount": brl}),
-                         use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhum empréstimo registrado.")
+    from dataclasses import replace as dc_replace
 
-    st.subheader("Novo empréstimo")
-    out_pix = df[(df.get("amount", pd.Series(dtype=float)) < 0)].sort_values("date", ascending=False).head(40) \
-        if not df.empty else pd.DataFrame()
-    with st.form("loan"):
+    from financas import loans as lo
+
+    def rate_txt(rate, period, comp) -> str:
+        if not rate:
+            return "sem juros"
+        return f"{rate * 100:.2f}% a.{'m.' if period == 'mes' else 'a.'} · {comp}".replace(".", ",", 1)
+
+    def rate_equiv(rate, period, comp) -> str:
+        m, a = lo.monthly_rate(rate, period, comp), lo.annual_rate(rate, period, comp)
+        return f"{m * 100:.3f}% ao mês  ≈  {a * 100:.2f}% ao ano ({comp})".replace(".", ",")
+
+    def rate_inputs(key: str, default_comp: str, allow_none: bool = True):
+        """Campos de taxa. Devolve (taxa em fração, 'mes'|'ano', 'simples'|'composto')."""
+        if allow_none:
+            with_int = st.radio("Juros", ["Sem juros", "Com juros"], horizontal=True, key=f"{key}_wi") == "Com juros"
+        else:
+            with_int = True
+        if not with_int:
+            return 0.0, "mes", default_comp
+        c1, c2, c3 = st.columns(3)
+        pct = c1.number_input("Taxa (%)", min_value=0.0, step=0.1, value=1.0, format="%.3f", key=f"{key}_pct")
+        per = c2.radio("Período da taxa", ["ao mês", "ao ano"], horizontal=True, key=f"{key}_per")
+        comp = c3.radio("Tipo de juros", ["simples", "composto"], index=["simples", "composto"].index(default_comp),
+                        horizontal=True, key=f"{key}_comp",
+                        help="Simples: rende só sobre o valor emprestado. Composto: juros sobre juros.")
+        return pct / 100, ("mes" if per == "ao mês" else "ano"), comp
+
+    st.title("Empréstimos")
+    tab_rec, tab_debt = st.tabs(["💸 Que eu emprestei (a receber)", "🏦 Que eu devo (banco)"])
+
+    # ================================================== A RECEBER
+    with tab_rec:
+        with session() as conn:
+            loans = analytics.loan_status(conn)
+            sched = analytics.loan_schedule_open(conn)
+            pays = pd.read_sql("SELECT p.*, l.person FROM loan_payments p JOIN loans l ON l.id=p.loan_id "
+                               "ORDER BY p.date DESC", conn)
+            people = [r["name"] for r in conn.execute("SELECT name FROM people ORDER BY name COLLATE NOCASE")]
+        if not loans.empty:
+            open_ = loans[loans["closed"] == 0]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total a receber (com juros até hoje)", brl(open_["remaining"].sum()))
+            c2.metric("Em atraso", brl(open_["overdue"].sum()))
+            c3.metric("Pessoas com saldo", open_["person"].nunique())
+            show = loans.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in loans.itertuples()],
+                                tipo=["parcelado" if s else "sem data combinada" for s in loans["scheduled"]])
+            st.dataframe(show[["person", "date", "principal", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
+                               "next_due", "note", "closed"]]
+                         .rename(columns={"person": "pessoa", "date": "data", "principal": "emprestado",
+                                          "paid": "recebido", "interest": "juros", "remaining": "falta",
+                                          "overdue": "atrasado", "next_due": "próx. venc.", "note": "obs",
+                                          "closed": "quitado"})
+                         .style.format({"emprestado": brl, "recebido": brl, "juros": brl, "falta": brl,
+                                        "atrasado": brl}), use_container_width=True, hide_index=True)
+            if not sched.empty:
+                st.subheader("Quando vou receber")
+                st.dataframe(sched[["person", "due_date", "amount", "remaining"]]
+                             .rename(columns={"person": "pessoa", "due_date": "vencimento", "amount": "parcela",
+                                              "remaining": "em aberto"})
+                             .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
+            if not pays.empty:
+                st.subheader("Recebimentos")
+                pays["como"] = pays.apply(lambda r: "direto no empréstimo" if r["directed"] else
+                                          f"baixa {'dos mais recentes' if r['order_mode'] == 'recentes' else 'dos mais antigos'} primeiro", axis=1)
+                st.dataframe(pays[["person", "date", "amount", "como", "note"]]
+                             .rename(columns={"person": "pessoa", "date": "data", "amount": "valor", "note": "obs"})
+                             .style.format({"valor": brl}), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum empréstimo registrado.")
+
+        # ---------------- novo empréstimo
+        st.subheader("Novo empréstimo a uma pessoa")
+        NEW = "➕ Cadastrar nova pessoa…"
+        out_pix = df[(df.get("amount", pd.Series(dtype=float)) < 0)].sort_values("date", ascending=False).head(40) \
+            if not df.empty else pd.DataFrame()
         a, b = st.columns(2)
-        person = a.text_input("Pessoa")
-        match = b.text_input("Nome como aparece no Pix dela (para casar automaticamente)",
-                             help="Ex.: 'JOAO DA SILVA'. Pix recebidos com esse trecho no nome abatem a dívida.")
-        d = a.date_input("Data do empréstimo")
-        principal = b.number_input("Valor emprestado (R$)", min_value=0.0, step=50.0)
-        n = a.number_input("Nº de parcelas combinadas (0 = sem data)", min_value=0, step=1, value=1)
-        first = b.date_input("1º vencimento")
-        note = st.text_input("Observação (ex.: 'conserto do carro, paga dia 10')")
+        pick = a.selectbox("Pessoa", people + [NEW], key="ln_person")
+        person = (b.text_input("Nome da nova pessoa", key="ln_newname") if pick == NEW else pick).strip()
+        match = st.text_input("Nome como aparece no Pix dela (opcional)", key="ln_match",
+                              help="Só preencha se ela costuma pagar só por Pix e nunca manda Pix por outros motivos. "
+                                   "Em branco = nenhum Pix é casado sozinho; você lança os recebimentos à mão.")
+        a, b = st.columns(2)
+        d = a.date_input("Data do empréstimo", key="ln_date")
+        principal = b.number_input("Valor emprestado (R$)", min_value=0.0, step=50.0, key="ln_principal")
+        rate, period, comp = rate_inputs("ln", "simples")
+        no_sched = st.checkbox("Não combinei data de retorno nem dia da 1ª parcela", key="ln_nosched")
+        sched_new: list = []
+        if not no_sched:
+            a, b = st.columns(2)
+            n = a.number_input("Nº de parcelas", min_value=1, step=1, value=1, key="ln_n")
+            first = b.date_input("1º vencimento", key="ln_first")
+            sched_new = lo.make_schedule(principal, rate, period, comp, int(n), first) if principal > 0 else []
+            if sched_new:
+                total = sum(x for _, x in sched_new)
+                st.info(f"Você vai receber **{brl(total)}** no total em {int(n)}x de **{brl(sched_new[0][1])}**"
+                        + (f" (juros de {brl(total - principal)}). Taxa: {rate_equiv(rate, period, comp)}." if rate else
+                           " (sem juros)."))
+        elif rate:
+            st.info("Sem data combinada: o saldo cresce com os juros ({}) até o dia em que ela pagar. "
+                    "Quando pagar, use **Quitar** abaixo.".format(rate_equiv(rate, period, comp)))
+        else:
+            st.caption("Sem data e sem juros combinados. Quando ela pagar, use **Quitar** para o programa descobrir a taxa.")
+        note = st.text_input("Observação (ex.: 'conserto do carro')", key="ln_note")
         tx_opts = {"—": None} | {f"{r.date:%d/%m} · {r.description} · {r.counterparty or ''} · {brl(-r.amount)}": r.id
                                  for r in out_pix.itertuples()} if not out_pix.empty else {"—": None}
-        tx_sel = st.selectbox("Pix de saída correspondente (opcional — tira do cálculo de gastos)", list(tx_opts))
-        if st.form_submit_button("Registrar") and person and principal > 0:
-            with session() as conn:
-                cur = conn.execute("INSERT INTO loans(person, match_name, date, principal, note, transaction_id) "
-                                   "VALUES (?,?,?,?,?,?)", (person, match or None, d.isoformat(), principal, note,
-                                                            tx_opts[tx_sel]))
-                if n:
-                    per = round(principal / n, 2)
-                    for k in range(int(n)):
-                        due = (pd.Timestamp(first) + pd.DateOffset(months=k)).date().isoformat()
-                        amt = per if k < n - 1 else round(principal - per * (n - 1), 2)
-                        conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)",
-                                     (cur.lastrowid, due, amt))
-                if tx_opts[tx_sel]:
-                    conn.execute("UPDATE transactions SET category='Empréstimo concedido', manual_category='Empréstimo concedido' WHERE id=?", (tx_opts[tx_sel],))
-                analytics.match_loan_payments(conn)
-            st.rerun()
-
-    if not loans.empty:
-        st.subheader("Lançar recebimento manual / quitar")
-        with st.form("pay"):
-            opts = {f"{r.person} ({brl(r.remaining)})": r.id for r in loans[loans["closed"] == 0].itertuples()}
-            if opts:
-                who = st.selectbox("Empréstimo", list(opts))
-                pd_ = st.date_input("Data")
-                amt = st.number_input("Valor recebido (R$)", min_value=0.0, step=50.0)
-                close = st.checkbox("Marcar como quitado")
-                if st.form_submit_button("Salvar"):
-                    with session() as conn:
-                        if amt > 0:
-                            conn.execute("INSERT INTO loan_payments(loan_id, date, amount, note) VALUES (?,?,?,?)",
-                                         (opts[who], pd_.isoformat(), amt, "manual"))
-                        if close:
-                            conn.execute("UPDATE loans SET closed=1 WHERE id=?", (opts[who],))
-                    st.rerun()
+        tx_sel = st.selectbox("Pix de saída correspondente (opcional — tira do cálculo de gastos)", list(tx_opts),
+                              key="ln_tx")
+        if st.button("Registrar empréstimo", type="primary", key="ln_save"):
+            if not person or principal <= 0:
+                st.error("Informe a pessoa e o valor emprestado.")
             else:
-                st.form_submit_button("Salvar", disabled=True)
+                with session() as conn:
+                    conn.execute("INSERT OR IGNORE INTO people(name) VALUES (?)", (person,))
+                    if match.strip():
+                        conn.execute("UPDATE people SET match_name=? WHERE name=?", (match.strip(), person))
+                    cur = conn.execute(
+                        "INSERT INTO loans(person, match_name, date, principal, note, transaction_id, rate, rate_period, "
+                        "compounding) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (person, match.strip() or None, d.isoformat(), principal, note, tx_opts[tx_sel], rate, period, comp))
+                    for due, amt in sched_new:
+                        conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)",
+                                     (cur.lastrowid, due.isoformat(), amt))
+                    if tx_opts[tx_sel]:
+                        conn.execute("UPDATE transactions SET category='Empréstimo concedido', "
+                                     "manual_category='Empréstimo concedido' WHERE id=?", (tx_opts[tx_sel],))
+                    analytics.match_loan_payments(conn)
+                for k in [k for k in st.session_state if k.startswith("ln_")]:
+                    del st.session_state[k]
+                st.rerun()
+
+        open_loans = loans[loans["closed"] == 0] if not loans.empty else loans
+
+        # ---------------- recebimento
+        if not open_loans.empty:
+            st.subheader("Lançar recebimento")
+            st.caption("O valor abate os empréstimos da pessoa na ordem escolhida; se sobrar, passa para o próximo.")
+            who_names = sorted(open_loans["person"].unique(), key=str.lower)
+            a, b, c = st.columns(3)
+            who = a.selectbox("Quem pagou", who_names, key="rc_who")
+            rdate = b.date_input("Data do recebimento", key="rc_date")
+            ramt = c.number_input("Valor recebido (R$)", min_value=0.0, step=50.0, key="rc_amt")
+            mine = open_loans[open_loans["person"] == who]
+            mode = st.radio("Abater", ["Mais antigos primeiro", "Mais recentes primeiro", "Um empréstimo específico"],
+                            horizontal=True, key="rc_mode")
+            target = None
+            if mode == "Um empréstimo específico":
+                lab = {f"{r.date} · {brl(r.principal)} · falta {brl(r.remaining)}": r.id for r in mine.itertuples()}
+                target = lab[st.selectbox("Qual empréstimo", list(lab), key="rc_target")]
+            if ramt > 0:
+                with session() as conn:
+                    ls, rs = analytics.load_loans(conn)
+                ref = int(mine["id"].iloc[0])
+                hyp = lo.Receipt(10**9, target or ref, rdate, ramt, directed=target is not None,
+                                 order="recentes" if mode.startswith("Mais recentes") else "antigas")
+                after = lo.replay(ls, rs + [hyp], max(date.today(), rdate))
+                before = lo.replay(ls, rs, max(date.today(), rdate))
+                prev = pd.DataFrame([{"empréstimo": f"{l.date} · {brl(l.principal)}", "falta hoje": before[l.id].balance(),
+                                      "depois do recebimento": after[l.id].balance()}
+                                     for l in ls if l.person == who and before[l.id].balance() > lo.EPS])
+                st.markdown("**Como vai ficar:**")
+                st.dataframe(prev.style.format({"falta hoje": brl, "depois do recebimento": brl}),
+                             use_container_width=True, hide_index=True)
+                sobra = ramt - sum(after[l.id].paid - before[l.id].paid for l in ls if l.person == who)
+                if sobra > 0.01:
+                    st.warning(f"Sobram {brl(sobra)} acima do que ela devia — confira o valor.")
+            if st.button("Registrar recebimento", type="primary", key="rc_save", disabled=ramt <= 0):
+                with session() as conn:
+                    conn.execute(
+                        "INSERT INTO loan_payments(loan_id, date, amount, note, directed, order_mode) VALUES (?,?,?,?,?,?)",
+                        (target or int(mine["id"].iloc[0]), rdate.isoformat(), ramt, "manual", int(target is not None),
+                         "recentes" if mode.startswith("Mais recentes") else "antigas"))
+                for k in [k for k in st.session_state if k.startswith("rc_")]:
+                    del st.session_state[k]
+                st.rerun()
+
+            # ---------------- quitar / descobrir a taxa
+            free = open_loans[~open_loans["scheduled"]]
+            if not free.empty:
+                st.subheader("Quitar empréstimo sem data combinada (descobrir a taxa)")
+                st.caption("Informe quanto ela pagou no total para encerrar. O programa calcula a taxa de juros "
+                           "embutida e guarda no empréstimo.")
+                lab = {f"{r.person} · {r.date} · {brl(r.principal)} · falta {brl(r.remaining)}": r.id
+                       for r in free.itertuples()}
+                qid = lab[st.selectbox("Empréstimo", list(lab), key="q_loan")]
+                a, b = st.columns(2)
+                qdate = a.date_input("Data da quitação", key="q_date")
+                qamt = b.number_input("Valor pago para quitar (R$)", min_value=0.0, step=50.0, key="q_amt")
+                c1, c2 = st.columns(2)
+                qper = "mes" if c1.radio("Mostrar taxa", ["ao mês", "ao ano"], horizontal=True, key="q_per") == "ao mês" else "ano"
+                qcomp = c2.radio("Tipo de juros", ["simples", "composto"], horizontal=True, key="q_comp")
+                if qamt > 0:
+                    with session() as conn:
+                        ls, rs = analytics.load_loans(conn)
+                    ls = [dc_replace(l, period=qper, compounding=qcomp) if l.id == qid else l for l in ls]
+                    try:
+                        found = lo.solve_rate(ls, rs, qid, qdate, qamt)
+                    except ValueError as e:
+                        found = None
+                        st.error(str(e))
+                    if found is None:
+                        st.warning("O valor pago é menor ou igual ao que ela devia sem juros — não há taxa a calcular.")
+                    else:
+                        st.success(f"Taxa efetiva: **{rate_equiv(found, qper, qcomp)}**")
+                        if st.button("Confirmar quitação", type="primary", key="q_save"):
+                            with session() as conn:
+                                conn.execute("UPDATE loans SET rate=?, rate_period=?, compounding=? WHERE id=?",
+                                             (found, qper, qcomp, qid))
+                                conn.execute("INSERT INTO loan_payments(loan_id, date, amount, note, directed) "
+                                             "VALUES (?,?,?,?,1)", (qid, qdate.isoformat(), qamt, "quitação"))
+                            for k in [k for k in st.session_state if k.startswith("q_")]:
+                                del st.session_state[k]
+                            st.rerun()
+
+    # ================================================== QUE EU DEVO
+    with tab_debt:
+        with session() as conn:
+            bl, bopen = analytics.bank_loan_status(conn)
+        if not bl.empty:
+            c1, c2 = st.columns(2)
+            c1.metric("Falta pagar (todos)", brl(bl["remaining"].sum()))
+            c2.metric("Parcelas em aberto", int(bl["installments_left"].sum()))
+            show = bl.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in bl.itertuples()])
+            st.dataframe(show[["bank", "date", "principal", "taxa", "installments", "installments_left", "total", "paid",
+                               "remaining", "note"]]
+                         .rename(columns={"bank": "banco", "date": "data", "principal": "valor tomado",
+                                          "installments": "parcelas", "installments_left": "faltam", "total": "total do contrato",
+                                          "paid": "pago", "remaining": "falta pagar", "note": "obs"})
+                         .style.format({"valor tomado": brl, "total do contrato": brl, "pago": brl, "falta pagar": brl}),
+                         use_container_width=True, hide_index=True)
+            if not bopen.empty:
+                st.subheader("Parcelas em aberto")
+                st.dataframe(bopen[["bank", "due_date", "amount", "remaining"]]
+                             .rename(columns={"bank": "banco", "due_date": "vencimento", "amount": "parcela",
+                                              "remaining": "em aberto"})
+                             .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum empréstimo de banco registrado.")
+
+        st.subheader("Novo empréstimo no banco")
+        a, b = st.columns(2)
+        bank = a.text_input("Banco / financeira", key="bk_bank")
+        bdate = b.date_input("Data da contratação", key="bk_date")
+        a, b = st.columns(2)
+        bprin = a.number_input("Valor recebido do banco (R$)", min_value=0.0, step=100.0, key="bk_prin")
+        bn = b.number_input("Nº de parcelas", min_value=1, step=1, value=12, key="bk_n")
+        brate, bper, bcomp = rate_inputs("bk", "composto")
+        a, b = st.columns(2)
+        bfirst = a.date_input("1º vencimento", key="bk_first")
+        binst = b.number_input("Valor da parcela do contrato (opcional)", min_value=0.0, step=10.0, key="bk_inst",
+                               help="Se o contrato diz o valor da parcela, informe. Em branco = calculado pela taxa.")
+        bnote = st.text_input("Observação", key="bk_note")
+        prev = lo.make_schedule(bprin, brate, bper, bcomp, int(bn), bfirst, binst or None) if bprin > 0 else []
+        if prev:
+            tot = sum(x for _, x in prev)
+            st.info(f"{int(bn)}x de **{brl(prev[0][1])}** — total a pagar **{brl(tot)}** (juros/custos {brl(tot - bprin)}).")
+        if st.button("Registrar empréstimo do banco", type="primary", key="bk_save"):
+            if not bank.strip() or bprin <= 0:
+                st.error("Informe o banco e o valor.")
+            else:
+                with session() as conn:
+                    conn.execute("INSERT INTO bank_loans(bank, date, principal, rate, rate_period, compounding, installments, "
+                                 "first_due, installment_amount, note) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                                 (bank.strip(), bdate.isoformat(), bprin, brate, bper, bcomp, int(bn), bfirst.isoformat(),
+                                  binst or None, bnote))
+                for k in [k for k in st.session_state if k.startswith("bk_")]:
+                    del st.session_state[k]
+                st.rerun()
+
+        if not bl.empty and (bl["remaining"] > 0.005).any():
+            st.subheader("Registrar pagamento de parcela")
+            act = bl[bl["remaining"] > 0.005]
+            lab = {f"{r.bank} · {r.date} · falta {brl(r.remaining)}": r.id for r in act.itertuples()}
+            a, b, c = st.columns(3)
+            pid = lab[a.selectbox("Empréstimo", list(lab), key="bp_loan")]
+            pdt = b.date_input("Data do pagamento", key="bp_date")
+            pam = c.number_input("Valor pago (R$)", min_value=0.0, step=10.0, key="bp_amt")
+            if st.button("Registrar pagamento", type="primary", key="bp_save", disabled=pam <= 0):
+                with session() as conn:
+                    conn.execute("INSERT INTO bank_loan_payments(bank_loan_id, date, amount) VALUES (?,?,?)",
+                                 (pid, pdt.isoformat(), pam))
+                for k in [k for k in st.session_state if k.startswith("bp_")]:
+                    del st.session_state[k]
+                st.rerun()
 
 # ------------------------------------------------------------------ Carro
 elif page == "Carro":

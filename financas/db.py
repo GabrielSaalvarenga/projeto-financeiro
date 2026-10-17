@@ -98,7 +98,38 @@ CREATE TABLE IF NOT EXISTS loans (
     principal   REAL NOT NULL,
     note        TEXT,
     transaction_id TEXT,                     -- Pix de saída que originou o empréstimo
-    closed      INTEGER DEFAULT 0
+    closed      INTEGER DEFAULT 0,
+    rate        REAL DEFAULT 0,              -- taxa por período, em fração (0.013 = 1,3%); 0 = sem juros
+    rate_period TEXT DEFAULT 'mes',          -- mes | ano
+    compounding TEXT DEFAULT 'simples'       -- simples | composto
+);
+
+CREATE TABLE IF NOT EXISTS people (          -- lista de pessoas para quem empresto
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    match_name  TEXT                         -- trecho do nome no Pix (opcional)
+);
+
+CREATE TABLE IF NOT EXISTS bank_loans (      -- empréstimos que EU devo (banco/financeira)
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank        TEXT NOT NULL,
+    date        TEXT NOT NULL,
+    principal   REAL NOT NULL,
+    rate        REAL DEFAULT 0,
+    rate_period TEXT DEFAULT 'mes',
+    compounding TEXT DEFAULT 'composto',
+    installments INTEGER NOT NULL,
+    first_due   TEXT NOT NULL,
+    installment_amount REAL,                 -- parcela do contrato (vazio = calculada pela taxa)
+    note        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS bank_loan_payments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank_loan_id INTEGER NOT NULL REFERENCES bank_loans(id) ON DELETE CASCADE,
+    date        TEXT NOT NULL,
+    amount      REAL NOT NULL,
+    note        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS loan_schedule (
@@ -114,7 +145,9 @@ CREATE TABLE IF NOT EXISTS loan_payments (
     date            TEXT NOT NULL,
     amount          REAL NOT NULL,
     transaction_id  TEXT UNIQUE,             -- Pix casado automaticamente
-    note            TEXT
+    note            TEXT,
+    directed        INTEGER DEFAULT 1,       -- 1: abate só o loan_id; 0: baixa os empréstimos da pessoa (loan_id = referência)
+    order_mode      TEXT DEFAULT 'antigas'   -- antigas | recentes (só quando directed=0)
 );
 
 CREATE TABLE IF NOT EXISTS car_events (
@@ -218,6 +251,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT", "force_category TEXT"):
         if col.split()[0] not in acols:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col}")
+    for table, new in (("loans", ("rate REAL DEFAULT 0", "rate_period TEXT DEFAULT 'mes'",
+                                  "compounding TEXT DEFAULT 'simples'")),
+                       ("loan_payments", ("directed INTEGER DEFAULT 1", "order_mode TEXT DEFAULT 'antigas'"))):
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col in new:
+            if col.split()[0] not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
+    conn.execute("INSERT OR IGNORE INTO people(name, match_name) SELECT person, MAX(match_name) FROM loans GROUP BY person")
     ucols = {r["name"] for r in conn.execute("PRAGMA table_info(utility_bills)")}
     for col in UTILITY_EXTRA:
         if col.split()[0] not in ucols:

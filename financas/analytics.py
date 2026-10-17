@@ -7,6 +7,7 @@ from datetime import date
 
 import pandas as pd
 
+from . import loans as loans_mod
 from .categorize import non_spending
 
 
@@ -145,8 +146,12 @@ def forecast(conn, months: int = 6) -> pd.DataFrame:
     result["A receber (empréstimos)"] = result["month"].map(
         sched.groupby("month")["remaining"].sum() if not sched.empty else {}).fillna(0.0)
 
+    _, bank_open = bank_loan_status(conn)
+    result["Empréstimo (banco)"] = result["month"].map(
+        bank_open.groupby("month")["remaining"].sum() if not bank_open.empty else {}).fillna(0.0)
+
     result = result.fillna(0.0)
-    out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Variáveis (média)"]
+    out_cols = ["Recorrentes", "Cemig + Cesama", "Parcelas cartão", "Empréstimo (banco)", "Variáveis (média)"]
     result["Saídas previstas"] = result[out_cols].sum(axis=1)
     result["Saldo previsto"] = (result["Salário"] + result["Benefícios (Flash)"] + result["A receber (empréstimos)"]
                                 - result["Saídas previstas"])
@@ -157,60 +162,117 @@ def forecast(conn, months: int = 6) -> pd.DataFrame:
 # ---------- Empréstimos ----------
 
 def match_loan_payments(conn) -> int:
-    """Casa Pix recebidos com empréstimos abertos pelo nome do pagador."""
-    loans = conn.execute("SELECT * FROM loans WHERE closed=0 AND match_name IS NOT NULL AND match_name<>'' "
-                         "ORDER BY date").fetchall()
+    """Casa Pix recebidos com a pessoa pelo trecho de nome (opcional) e baixa os empréstimos dela.
+    Pessoa sem nome de Pix cadastrado nunca é casada automaticamente."""
+    needles: dict[str, set[str]] = {}
+    for r in conn.execute("SELECT name, match_name FROM people WHERE match_name IS NOT NULL AND match_name<>''"):
+        needles.setdefault(r["name"], set()).add(_norm(r["match_name"]))
+    for r in conn.execute("SELECT person, match_name FROM loans WHERE closed=0 AND match_name IS NOT NULL AND match_name<>''"):
+        needles.setdefault(r["person"], set()).add(_norm(r["match_name"]))
     n = 0
-    for loan in loans:
-        needle = _norm(loan["match_name"])
+    for person, keys in needles.items():
+        keys.discard("")
+        ref = conn.execute("SELECT id, date FROM loans WHERE person=? ORDER BY date, id", (person,)).fetchone()
+        if not keys or ref is None:
+            continue
         cands = conn.execute(
             """SELECT id, date, amount, description, counterparty FROM transactions
                WHERE amount > 0 AND date >= ? AND id NOT IN (SELECT transaction_id FROM loan_payments
-               WHERE transaction_id IS NOT NULL) ORDER BY date""", (loan["date"],)).fetchall()
+               WHERE transaction_id IS NOT NULL) ORDER BY date""", (ref["date"],)).fetchall()
         for t in cands:
-            if needle and needle in _norm(f"{t['counterparty']} {t['description']}"):
-                conn.execute("INSERT INTO loan_payments(loan_id, date, amount, transaction_id, note) VALUES (?,?,?,?,?)",
-                             (loan["id"], t["date"], t["amount"], t["id"], "Pix casado automaticamente"))
+            if any(k in _norm(f"{t['counterparty']} {t['description']}") for k in keys):
+                conn.execute("INSERT INTO loan_payments(loan_id, date, amount, transaction_id, note, directed, order_mode) "
+                             "VALUES (?,?,?,?,?,0,'antigas')",
+                             (ref["id"], t["date"], t["amount"], t["id"], "Pix casado automaticamente"))
                 conn.execute("UPDATE transactions SET category='Empréstimo recebido', manual_category='Empréstimo recebido' WHERE id=?", (t["id"],))
                 n += 1
     return n
 
 
-def loan_status(conn) -> pd.DataFrame:
-    df = pd.read_sql(
-        """SELECT l.id, l.person, l.date, l.principal, l.note, l.closed,
-                  COALESCE((SELECT SUM(amount) FROM loan_payments p WHERE p.loan_id=l.id),0) AS paid
-           FROM loans l ORDER BY l.closed, l.date""", conn)
+def _d(s) -> date:
+    return date.fromisoformat(str(s)[:10])
+
+
+def load_loans(conn) -> tuple[list[loans_mod.Loan], list[loans_mod.Receipt]]:
+    sched: dict[int, list] = {}
+    for r in conn.execute("SELECT loan_id, due_date, amount FROM loan_schedule ORDER BY due_date"):
+        sched.setdefault(r["loan_id"], []).append((_d(r["due_date"]), r["amount"]))
+    ls = [loans_mod.Loan(r["id"], r["person"], _d(r["date"]), r["principal"], r["rate"] or 0.0,
+                         r["rate_period"] or "mes", r["compounding"] or "simples", sched.get(r["id"], []), bool(r["closed"]))
+          for r in conn.execute("SELECT * FROM loans ORDER BY date, id")]
+    rs = [loans_mod.Receipt(r["id"], r["loan_id"], _d(r["date"]), r["amount"], bool(r["directed"]), r["order_mode"] or "antigas")
+          for r in conn.execute("SELECT * FROM loan_payments ORDER BY date, id")]
+    return ls, rs
+
+
+def loan_status(conn, today: date | None = None) -> pd.DataFrame:
+    today = today or date.today()
+    df = pd.read_sql("SELECT id, person, date, principal, note, closed, rate, rate_period, compounding "
+                     "FROM loans ORDER BY date, id", conn)
     if df.empty:
-        return df
-    df["remaining"] = (df["principal"] - df["paid"]).clip(lower=0)
-    sched = loan_schedule_open(conn)
-    today = date.today().isoformat()
-    nxt = sched[sched["due_date"] >= today].groupby("loan_id")["due_date"].min() if not sched.empty else {}
-    late = sched[sched["due_date"] < today].groupby("loan_id")["remaining"].sum() if not sched.empty else {}
-    df["next_due"] = df["id"].map(nxt)
-    df["overdue"] = df["id"].map(late).fillna(0.0)
-    return df
+        return df.assign(paid=[], remaining=[], overdue=[], next_due=[], scheduled=[], interest=[])
+    ls, rs = load_loans(conn)
+    states = loans_mod.replay(ls, rs, today)
+    df["paid"] = df["id"].map(lambda i: round(states[i].paid, 2))
+    df["remaining"] = df["id"].map(lambda i: round(states[i].balance(), 2))
+    df["scheduled"] = df["id"].map(lambda i: states[i].scheduled)
+    df["quitado"] = (df["remaining"] <= loans_mod.EPS) | (df["closed"] == 1)
+    df.loc[df["closed"] == 1, "remaining"] = 0.0  # marcado quitado à mão (legado)
+    df["interest"] = (df["paid"] + df["remaining"] - df["principal"]).round(2)
+    nxt, late = {}, {}
+    for l in ls:
+        if not l.schedule or df.loc[df["id"] == l.id, "closed"].iloc[0]:
+            continue
+        for due, _, rem in loans_mod.open_installments(l.schedule, states[l.id].paid):
+            if rem > loans_mod.EPS:
+                (late if due < today else nxt).setdefault(l.id, []).append((due, rem))
+    df["next_due"] = df["id"].map(lambda i: min(d for d, _ in nxt[i]).isoformat() if i in nxt else None)
+    df["overdue"] = df["id"].map(lambda i: round(sum(r for _, r in late.get(i, [])), 2))
+    df["closed"] = df["quitado"].astype(int)
+    return df.drop(columns="quitado")
 
 
 def loan_schedule_open(conn) -> pd.DataFrame:
-    """Parcelas combinadas, abatendo os pagamentos recebidos na ordem do vencimento."""
-    sched = pd.read_sql("SELECT s.loan_id, s.due_date, s.amount, l.person FROM loan_schedule s "
-                        "JOIN loans l ON l.id=s.loan_id WHERE l.closed=0 ORDER BY s.loan_id, s.due_date", conn)
-    if sched.empty:
-        return sched.assign(remaining=[], month=[])
-    paid = pd.read_sql("SELECT loan_id, SUM(amount) AS paid FROM loan_payments GROUP BY loan_id", conn) \
-        .set_index("loan_id")["paid"].to_dict()
-    rem = []
-    for loan_id, grp in sched.groupby("loan_id", sort=False):
-        credit = paid.get(loan_id, 0.0)
-        for amt in grp["amount"]:
-            used = min(credit, amt)
-            credit -= used
-            rem.append(amt - used)
-    sched["remaining"] = rem
-    sched["month"] = sched["due_date"].str[:7]
-    return sched[sched["remaining"] > 0.005]
+    """Parcelas combinadas ainda em aberto (recebimentos já descontados na ordem escolhida)."""
+    ls, rs = load_loans(conn)
+    states = loans_mod.replay(ls, rs, date.today())
+    rows = []
+    for l in ls:
+        if l.closed or not l.schedule:
+            continue
+        for due, amt, rem in loans_mod.open_installments(l.schedule, states[l.id].paid):
+            if rem > loans_mod.EPS:
+                rows.append({"loan_id": l.id, "due_date": due.isoformat(), "amount": amt, "person": l.person,
+                             "remaining": rem, "month": due.isoformat()[:7]})
+    cols = ["loan_id", "due_date", "amount", "person", "remaining", "month"]
+    return pd.DataFrame(rows, columns=cols).sort_values(["loan_id", "due_date"]).reset_index(drop=True)
+
+
+# ---------- Empréstimos que eu devo (banco) ----------
+
+def bank_loan_status(conn) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(resumo por empréstimo, parcelas em aberto). Pagamentos abatem as parcelas mais antigas primeiro."""
+    df = pd.read_sql("SELECT * FROM bank_loans ORDER BY date, id", conn)
+    cols = ["bank_loan_id", "bank", "due_date", "amount", "remaining", "month"]
+    if df.empty:
+        return df.assign(paid=[], remaining=[], total=[]), pd.DataFrame(columns=cols)
+    paid = {r["bank_loan_id"]: r["s"] for r in conn.execute(
+        "SELECT bank_loan_id, SUM(amount) AS s FROM bank_loan_payments GROUP BY bank_loan_id")}
+    rows, summary = [], []
+    for r in df.itertuples():
+        sch = loans_mod.make_schedule(r.principal, r.rate or 0.0, r.rate_period, r.compounding, int(r.installments),
+                                      _d(r.first_due), r.installment_amount if r.installment_amount == r.installment_amount else None)
+        opened = loans_mod.open_installments(sch, paid.get(r.id, 0.0) or 0.0)
+        total = sum(a for _, a in sch)
+        rem = sum(x for _, _, x in opened)
+        summary.append({"id": r.id, "total": round(total, 2), "paid": round(paid.get(r.id, 0.0) or 0.0, 2),
+                        "remaining": round(rem, 2), "installments_left": sum(1 for *_, x in opened if x > loans_mod.EPS)})
+        for due, amt, x in opened:
+            if x > loans_mod.EPS:
+                rows.append({"bank_loan_id": r.id, "bank": r.bank, "due_date": due.isoformat(), "amount": amt,
+                             "remaining": x, "month": due.isoformat()[:7]})
+    df = df.merge(pd.DataFrame(summary), on="id")
+    return df, pd.DataFrame(rows, columns=cols)
 
 
 # ---------- Carro ----------
