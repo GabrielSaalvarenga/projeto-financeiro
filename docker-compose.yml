@@ -1,15 +1,16 @@
+# Teste: usa uma CÓPIA dos dados (data-teste/), nunca a pasta data/ real.
+# Para produção (ex.: ZimaOS), troque ./data-teste por ./data.
 services:
   painel:
     build: .
-    env_file: .env
-    environment: [FIN_DATA_DIR=/data]
-    volumes: [./data:/data, ./rules.yaml:/app/rules.yaml:ro]
-    ports: ["8501:8501"]
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
+    volumes: [./data-teste:/data, ./rules.yaml:/app/rules.yaml:ro]
+    ports: ["8502:8501"]
     restart: unless-stopped
-  sync:   # coleta a cada 6 h
+  sync:   # coleta a cada 6 h — só sobe com: docker compose --profile sync up
+    profiles: [sync]
     build: .
-    env_file: .env
-    environment: [FIN_DATA_DIR=/data]
-    volumes: [./data:/data, ./rules.yaml:/app/rules.yaml:ro]
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
+    volumes: [./data-teste:/data, ./rules.yaml:/app/rules.yaml:ro]
     entrypoint: ["/bin/sh", "-c", "while true; do python -m financas.cli sync; sleep 21600; done"]
     restart: unless-stopped
