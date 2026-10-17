@@ -44,6 +44,16 @@ if ENV_NAME in ("dev", "prod"):  # faixa fixa no topo: impossível confundir os 
     </style><div class="env-banner">{label}</div>""", unsafe_allow_html=True)
 
 
+MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro",
+         "Novembro", "Dezembro"]
+
+
+def month_name(ym: str) -> str:
+    """'2026-03' -> 'Março 2026'."""
+    y, m = ym.split("-")
+    return f"{MESES[int(m) - 1]} {y}"
+
+
 def brl(v) -> str:
     if v is None or pd.isna(v):
         return "—"
@@ -217,13 +227,9 @@ elif page == "Gastos":
         st.info("Sem transações ainda.")
         st.stop()
     months = sorted(sp["month"].unique())
-    st.caption("Período — clique nos meses que quer ver (pode escolher vários)")
-    chosen = st.pills("Período", months, selection_mode="multi", default=months[-6:], key="gastos_meses",
-                      label_visibility="collapsed")
-    if not chosen:
-        st.info("Escolha pelo menos um mês acima.")
-        st.stop()
-    win = sp[sp["month"].isin(chosen)]
+    sel = st.select_slider("Período", options=months, value=(months[max(0, len(months) - 6)], months[-1]),
+                           format_func=month_name)
+    win = sp[(sp["month"] >= sel[0]) & (sp["month"] <= sel[1])]
     folded, cmap = fold_categories(win, "category", "value")
 
     st.subheader("Gasto mensal por categoria")
