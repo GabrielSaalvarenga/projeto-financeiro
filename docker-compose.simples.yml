@@ -1,0 +1,15 @@
+# Para QUEM BAIXOU o projeto e quer rodar sem instalar Python: só precisa do Docker.
+#   subir:   docker compose -f docker-compose.simples.yml up -d --build
+#   abrir:   http://localhost:8501   (outra porta: PORTA=8600 docker compose -f docker-compose.simples.yml up -d)
+#   parar:   docker compose -f docker-compose.simples.yml down
+# Seus dados (banco, chaves, backups, PDFs) ficam na pasta ./dados, fora do container: apagar o container não apaga nada.
+# (O docker-compose.yml é o do autor, com vários ambientes. Se você só quer usar o painel, ignore-o.)
+name: financas-simples
+
+services:
+  painel:
+    build: .
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env]
+    volumes: ["./dados:/data"]
+    ports: ["${PORTA:-8501}:8501"]
+    restart: unless-stopped
