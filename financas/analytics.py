@@ -36,7 +36,7 @@ def transactions(conn) -> pd.DataFrame:
 
 # Só estas categorias contam como renda. Dinheiro que entra em qualquer outra categoria de fluxo
 # (ex.: amigo devolvendo a parte da viagem, cashback, estorno) é REEMBOLSO e abate o gasto daquela categoria.
-INCOME_CATEGORIES = {"Salário", "Mesada / ajuda de custos", "Outras entradas", "Pix recebido"}
+INCOME_CATEGORIES = {"Salário", "Mesada / ajuda de custos", "Outras entradas", "Pix recebido", "Venda recebida"}
 
 
 def _is_refund(df: pd.DataFrame) -> pd.Series:
@@ -161,18 +161,53 @@ def forecast(conn, months: int = 6) -> pd.DataFrame:
 
 # ---------- Empréstimos ----------
 
+def match_sale_payments(conn) -> int:
+    """Baixa parcela de venda quando entra um Pix da pessoa (nome do Pix cadastrado) com o VALOR de uma parcela em aberto.
+    Pix da pessoa com outro valor não é casado sozinho (lance à mão em Lançar recebimento)."""
+    n = 0
+    sales = conn.execute("SELECT l.id, l.person, l.date, COALESCE(NULLIF(l.match_name,''), p.match_name) AS key "
+                         "FROM loans l LEFT JOIN people p ON p.name=l.person "
+                         "WHERE l.kind='venda' AND l.closed=0 ORDER BY l.date, l.id").fetchall()
+    for sale in sales:
+        key = _norm(sale["key"] or "")
+        if not key:
+            continue
+        cands = conn.execute(
+            """SELECT id, date, amount, description, counterparty FROM transactions
+               WHERE amount > 0 AND date >= ? AND id NOT IN (SELECT transaction_id FROM loan_payments
+               WHERE transaction_id IS NOT NULL) ORDER BY date""", (sale["date"],)).fetchall()
+        for t in cands:
+            if key not in _norm(f"{t['counterparty']} {t['description']}"):
+                continue
+            ls, rs = load_loans(conn)
+            st = loans_mod.replay(ls, rs, _d(t["date"]))[sale["id"]]
+            opened = loans_mod.open_installments(st.loan.schedule, st.paid)
+            if not any(rem > loans_mod.EPS and abs(rem - t["amount"]) < 0.01 for _, _, rem in opened):
+                continue
+            conn.execute("INSERT INTO loan_payments(loan_id, date, amount, transaction_id, note, directed, order_mode) "
+                         "VALUES (?,?,?,?,?,1,'antigas')",
+                         (sale["id"], t["date"], t["amount"], t["id"], "Pix casado automaticamente (valor da parcela)"))
+            conn.execute("UPDATE transactions SET category='Venda recebida', manual_category='Venda recebida' WHERE id=?",
+                         (t["id"],))
+            n += 1
+    return n
+
+
 def match_loan_payments(conn) -> int:
     """Casa Pix recebidos com a pessoa pelo trecho de nome (opcional) e baixa os empréstimos dela.
-    Pessoa sem nome de Pix cadastrado nunca é casada automaticamente."""
+    Pessoa sem nome de Pix cadastrado nunca é casada automaticamente. Vendas casam antes, pelo valor da parcela."""
+    sold = match_sale_payments(conn)
     needles: dict[str, set[str]] = {}
     for r in conn.execute("SELECT name, match_name FROM people WHERE match_name IS NOT NULL AND match_name<>''"):
         needles.setdefault(r["name"], set()).add(_norm(r["match_name"]))
-    for r in conn.execute("SELECT person, match_name FROM loans WHERE closed=0 AND match_name IS NOT NULL AND match_name<>''"):
+    for r in conn.execute("SELECT person, match_name FROM loans WHERE closed=0 AND kind='emprestimo' "
+                          "AND match_name IS NOT NULL AND match_name<>''"):
         needles.setdefault(r["person"], set()).add(_norm(r["match_name"]))
     n = 0
     for person, keys in needles.items():
         keys.discard("")
-        ref = conn.execute("SELECT id, date FROM loans WHERE person=? ORDER BY date, id", (person,)).fetchone()
+        ref = conn.execute("SELECT id, date FROM loans WHERE person=? AND kind='emprestimo' ORDER BY date, id",
+                           (person,)).fetchone()
         if not keys or ref is None:
             continue
         cands = conn.execute(
@@ -186,7 +221,7 @@ def match_loan_payments(conn) -> int:
                              (ref["id"], t["date"], t["amount"], t["id"], "Pix casado automaticamente"))
                 conn.execute("UPDATE transactions SET category='Empréstimo recebido', manual_category='Empréstimo recebido' WHERE id=?", (t["id"],))
                 n += 1
-    return n
+    return n + sold
 
 
 def _d(s) -> date:
@@ -198,7 +233,8 @@ def load_loans(conn) -> tuple[list[loans_mod.Loan], list[loans_mod.Receipt]]:
     for r in conn.execute("SELECT loan_id, due_date, amount FROM loan_schedule ORDER BY due_date"):
         sched.setdefault(r["loan_id"], []).append((_d(r["due_date"]), r["amount"]))
     ls = [loans_mod.Loan(r["id"], r["person"], _d(r["date"]), r["principal"], r["rate"] or 0.0,
-                         r["rate_period"] or "mes", r["compounding"] or "simples", sched.get(r["id"], []), bool(r["closed"]))
+                         r["rate_period"] or "mes", r["compounding"] or "simples", sched.get(r["id"], []), bool(r["closed"]),
+                         r["kind"] or "emprestimo")
           for r in conn.execute("SELECT * FROM loans ORDER BY date, id")]
     rs = [loans_mod.Receipt(r["id"], r["loan_id"], _d(r["date"]), r["amount"], bool(r["directed"]), r["order_mode"] or "antigas")
           for r in conn.execute("SELECT * FROM loan_payments ORDER BY date, id")]
@@ -207,7 +243,7 @@ def load_loans(conn) -> tuple[list[loans_mod.Loan], list[loans_mod.Receipt]]:
 
 def loan_status(conn, today: date | None = None) -> pd.DataFrame:
     today = today or date.today()
-    df = pd.read_sql("SELECT id, person, date, principal, note, closed, rate, rate_period, compounding "
+    df = pd.read_sql("SELECT id, person, date, principal, note, closed, rate, rate_period, compounding, kind, item "
                      "FROM loans ORDER BY date, id", conn)
     if df.empty:
         return df.assign(paid=[], remaining=[], overdue=[], next_due=[], scheduled=[], interest=[], installments=[])
@@ -263,7 +299,7 @@ def loan_timeline(conn, asof: date | None = None) -> tuple[pd.DataFrame, pd.Data
     """Foto mensal (fim de cada mês; a última é `asof`/hoje): saldo a receber por pessoa e total emprestado acumulado.
     Só empréstimos com parcelas combinadas — os sem data de retorno ficam fora do gráfico."""
     ls, rs = load_loans(conn)
-    ls = [l for l in ls if l.schedule]
+    ls = [l for l in ls if l.schedule and l.kind == "emprestimo"]
     if not ls:
         return pd.DataFrame(columns=["month", "person", "saldo"]), pd.DataFrame(columns=["month", "emprestado", "recebido"])
     end = max(asof or date.today(), date.today())

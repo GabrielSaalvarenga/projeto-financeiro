@@ -3,6 +3,11 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.3.0 — vendas e demonstração
+- Tela **Empréstimos e vendas**, com nova aba **Vendas**: venda parcelada de produto ou serviço entra como previsão de entrada (também na Previsão e na Visão geral).
+- Baixa automática: Pix da pessoa com o valor de uma parcela em aberto baixa a parcela sozinho (categoria *Venda recebida*, conta como entrada). Pix com outro valor, você lança à mão.
+- Dados fictícios de demonstração mais completos (`cli demo`, pasta própria `data-demo`, faixa azul "Demonstração").
+
 ## 0.2.0 — produtos nas compras online
 - Nova área **Vincular produto** (aba Gastos): diga qual produto foi uma compra; com "loja + valor", toda parcela igual (passada e futura) é marcada sozinha e vai para Compras online.
 - O ranking mostra "Compras online › Produto" e a tabela de lançamentos ganhou a coluna Produto.

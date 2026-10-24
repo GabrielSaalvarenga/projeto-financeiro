@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS loans (
     closed      INTEGER DEFAULT 0,
     rate        REAL DEFAULT 0,              -- taxa por período, em fração (0.013 = 1,3%); 0 = sem juros
     rate_period TEXT DEFAULT 'mes',          -- mes | ano
-    compounding TEXT DEFAULT 'simples'       -- simples | composto
+    compounding TEXT DEFAULT 'simples',      -- simples | composto
+    kind        TEXT DEFAULT 'emprestimo',   -- emprestimo | venda (venda parcelada de produto/serviço, sem juros)
+    item        TEXT                         -- o que foi vendido (só kind='venda')
 );
 
 CREATE TABLE IF NOT EXISTS people (          -- lista de pessoas para quem empresto
@@ -276,7 +278,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if col.split()[0] not in acols:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col}")
     for table, new in (("loans", ("rate REAL DEFAULT 0", "rate_period TEXT DEFAULT 'mes'",
-                                  "compounding TEXT DEFAULT 'simples'")),
+                                  "compounding TEXT DEFAULT 'simples'", "kind TEXT DEFAULT 'emprestimo'", "item TEXT")),
                        ("loan_payments", ("directed INTEGER DEFAULT 1", "order_mode TEXT DEFAULT 'antigas'"))):
         have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         for col in new:

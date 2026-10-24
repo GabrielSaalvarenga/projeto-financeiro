@@ -35,14 +35,15 @@ ENV_NAME = os.getenv("FIN_ENV_NAME", "")
 st.set_page_config(page_title="[DEV] Painel Financeiro" if ENV_NAME == "dev" else "Painel Financeiro",
                    page_icon="🧪" if ENV_NAME == "dev" else "📊", layout="wide")
 visual.inject_css()
-if ENV_NAME in ("dev", "prod"):  # faixa fixa no topo: impossível confundir os ambientes
-    bg, label = (("#d9480f", "🧪 AMBIENTE DE DESENVOLVIMENTO — dados de teste (clone de prod). Nada aqui afeta produção.")
-                 if ENV_NAME == "dev" else ("#2b8a3e", "PRODUÇÃO — dados reais"))
+if ENV_NAME in ("dev", "prod", "demo"):  # faixa fixa no topo: impossível confundir os ambientes
+    bg, label = {"dev": ("#d9480f", "🧪 AMBIENTE DE DESENVOLVIMENTO — dados de teste (clone de prod). Nada aqui afeta produção."),
+                 "demo": ("#1c7ed6", "🎬 DEMONSTRAÇÃO — todos os dados são fictícios"),
+                 "prod": ("#2b8a3e", "PRODUÇÃO — dados reais")}[ENV_NAME]
     st.markdown(f"""<style>
       .env-banner {{position:fixed;top:0;left:0;right:0;z-index:999999;background:{bg};color:#fff;text-align:center;
-                   font-weight:700;padding:{'8px' if ENV_NAME == 'dev' else '2px'} 12px;
-                   font-size:{'15px' if ENV_NAME == 'dev' else '11px'};letter-spacing:.3px}}
-      .stApp {{padding-top:{'38px' if ENV_NAME == 'dev' else '18px'}}}
+                   font-weight:700;padding:{'2px' if ENV_NAME == 'prod' else '8px'} 12px;
+                   font-size:{'11px' if ENV_NAME == 'prod' else '15px'};letter-spacing:.3px}}
+      .stApp {{padding-top:{'18px' if ENV_NAME == 'prod' else '38px'}}}
     </style><div class="env-banner">{label}</div>""", unsafe_allow_html=True)
 
 
@@ -175,7 +176,7 @@ if "page" not in st.session_state:  # instalação nova (sem conexões nem dados
     fresh = df.empty and not any(connections.is_configured(s) for s in connections.SOURCES)
     st.session_state["page"] = "Começar" if fresh else "Visão geral"
 page = st.sidebar.radio("Seção", ["Começar", "Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
-                                  "Empréstimos", "Carro", "Investimentos", "Sincronizar", "Configurações"], key="page")
+                                  "Empréstimos e vendas", "Carro", "Investimentos", "Sincronizar", "Configurações"], key="page")
 if os.getenv("FIN_ENV_NAME") == "dev":
     st.sidebar.warning("🧪 **DESENVOLVIMENTO** — dados de teste (clone de prod)")
 st.sidebar.caption(f"Base: `{DB}` · versão {__version__}")
@@ -210,7 +211,7 @@ elif page == "Visão geral":
                                           "transferências entre suas contas nem empréstimos.")
     else:
         c3.metric("Gasto no mês", "—")
-    c4.metric("A receber (empréstimos)", brl(loans["remaining"].sum() if not loans.empty else 0))
+    c4.metric("A receber (empréstimos e vendas)", brl(loans["remaining"].sum() if not loans.empty else 0))
 
     left, right = st.columns(2)
     with left:
@@ -727,7 +728,7 @@ elif page == "Contas de consumo":
                 st.rerun()
 
 # ------------------------------------------------------------------ Empréstimos
-elif page == "Empréstimos":
+elif page == "Empréstimos e vendas":
     from dataclasses import replace as dc_replace
 
     from financas import loans as lo
@@ -794,8 +795,8 @@ Simples: total = valor × (1 + taxa × meses até o último vencimento); parcela
 e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cálculo* mostra cada passo.
 """)
 
-    st.title("Empréstimos")
-    tab_rec, tab_debt = st.tabs(["💸 Que eu emprestei (a receber)", "🏦 Que eu devo (banco)"])
+    st.title("Empréstimos e vendas")
+    tab_rec, tab_sales, tab_debt = st.tabs(["💸 Empréstimos (a receber)", "🛒 Vendas (a receber)", "🏦 Que eu devo (banco)"])
 
     # ================================================== A RECEBER
     with tab_rec:
@@ -813,6 +814,12 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             pays = pd.read_sql("SELECT p.*, l.person FROM loan_payments p JOIN loans l ON l.id=p.loan_id "
                                "ORDER BY p.date DESC", conn)
             people = [r["name"] for r in conn.execute("SELECT name FROM people ORDER BY name COLLATE NOCASE")]
+        sales = loans[loans["kind"] == "venda"]
+        sales_sched = sched[sched["loan_id"].isin(sales["id"])]
+        sales_pays = pays[pays["loan_id"].isin(sales["id"])]
+        loans = loans[loans["kind"] == "emprestimo"]
+        sched = sched[sched["loan_id"].isin(loans["id"])]
+        pays = pays[pays["loan_id"].isin(loans["id"])]
         if not loans.empty:
             open_ = loans[loans["closed"] == 0]
             c1, c2, c3 = st.columns(3)
@@ -822,13 +829,13 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             show = loans.assign(taxa=[rate_txt(r.rate, r.rate_period, r.compounding) for r in loans.itertuples()],
                                 tipo=["parcelado" if s else "sem data combinada" for s in loans["scheduled"]],
                                 installments=[f"{int(v)}x" if pd.notna(v) else "—" for v in loans["installments"]])
-            visual.table(show[["person", "date", "principal", "installments", "taxa", "tipo", "paid", "interest", "remaining", "overdue",
-                               "next_due", "note", "closed"]]
-                         .rename(columns={"person": "pessoa", "date": "data", "principal": "emprestado",
+            visual.table(show[["person", "date", "principal", "installments", "taxa", "tipo", "paid", "interest",
+                               "remaining", "overdue", "next_due", "note", "closed"]]
+                         .rename(columns={"person": "pessoa", "date": "data", "principal": "valor",
                                           "installments": "parcelas", "paid": "recebido", "interest": "juros", "remaining": "falta",
                                           "overdue": "atrasado", "next_due": "próx. venc.", "note": "obs",
                                           "closed": "quitado"})
-                         .style.format({"emprestado": brl, "recebido": brl, "juros": brl, "falta": brl,
+                         .style.format({"valor": brl, "recebido": brl, "juros": brl, "falta": brl,
                                         "atrasado": brl}), use_container_width=True, hide_index=True)
             with session() as conn:
                 tl_person, tl_total = analytics.loan_timeline(conn, asof)
@@ -863,7 +870,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
             st.info("Nenhum empréstimo registrado.")
 
         # ---------------- memória de cálculo
-        free_all = loans[~loans["scheduled"]] if not loans.empty else loans
+        free_all = loans[(~loans["scheduled"]) & (loans["kind"] == "emprestimo")] if not loans.empty else loans
         if not free_all.empty:
             with st.expander("🧮 Memória de cálculo (para conferir na HP 12c)"):
                 lab = {f"{r.person} · {r.date} · {brl(r.principal)} · {rate_txt(r.rate, r.rate_period, r.compounding)}": r.id
@@ -901,6 +908,7 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                     if pix.strip():
                         conn.execute("UPDATE people SET match_name=? WHERE name=?", (pix.strip(), name))
                 st.session_state["ln_pending_person"] = name  # aplicado antes de o seletor ser criado
+                st.session_state["sv_pending_person"] = name
                 st.rerun()
 
         if "ln_pending_person" in st.session_state:
@@ -964,7 +972,8 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
         # ---------------- recebimento
         if not open_loans.empty:
             st.subheader("Lançar recebimento")
-            st.caption("O valor abate os empréstimos da pessoa na ordem escolhida; se sobrar, passa para o próximo.")
+            st.caption("O valor abate os empréstimos da pessoa na ordem escolhida; se sobrar, passa para o próximo. "
+                       "Recebimentos de vendas ficam na aba **Vendas**.")
             who_names = sorted(open_loans["person"].unique(), key=str.lower)
             a, b, c = st.columns(3)
             who = a.selectbox("Quem pagou", who_names, key="rc_who")
@@ -975,23 +984,28 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                             horizontal=True, key="rc_mode")
             target = None
             if mode == "Um empréstimo específico":
-                lab = {f"{r.date} · {brl(r.principal)} · falta {brl(r.remaining)}": r.id for r in mine.itertuples()}
+                lab = {f"{'Venda ' + (r.item or '') if r.kind == 'venda' else 'Empréstimo'} · {r.date} · {brl(r.principal)} · "
+                       f"falta {brl(r.remaining)}": r.id for r in mine.itertuples()}
                 target = lab[st.selectbox("Qual empréstimo", list(lab), key="rc_target")]
             if ramt > 0:
                 with session() as conn:
                     ls, rs = analytics.load_loans(conn)
                 ref = int(mine["id"].iloc[0])
+                mine_item = dict(zip(mine["id"], mine["item"]))
                 hyp = lo.Receipt(10**9, target or ref, rdate, ramt, directed=target is not None,
                                  order="recentes" if mode.startswith("Mais recentes") else "antigas")
                 after = lo.replay(ls, rs + [hyp], max(asof, rdate))
                 before = lo.replay(ls, rs, max(asof, rdate))
-                prev = pd.DataFrame([{"empréstimo": f"{l.date} · {brl(l.principal)}", "falta hoje": before[l.id].balance(),
+                ref_kind = next(l.kind for l in ls if l.id == (target or ref))
+                prev = pd.DataFrame([{"operação": f"{'Venda ' + (mine_item.get(l.id) or '') if l.kind == 'venda' else 'Empréstimo'}"
+                                                   f" · {l.date} · {brl(l.principal)}", "falta hoje": before[l.id].balance(),
                                       "depois do recebimento": after[l.id].balance()}
-                                     for l in ls if l.person == who and before[l.id].balance() > lo.EPS])
+                                     for l in ls if l.person == who and l.kind == ref_kind
+                                     and before[l.id].balance() > lo.EPS])
                 st.markdown("**Como vai ficar:**")
                 visual.table(prev.style.format({"falta hoje": brl, "depois do recebimento": brl}),
                              use_container_width=True, hide_index=True)
-                sobra = ramt - sum(after[l.id].paid - before[l.id].paid for l in ls if l.person == who)
+                sobra = ramt - sum(after[l.id].paid - before[l.id].paid for l in ls if l.person == who and l.kind == ref_kind)
                 if sobra > 0.01:
                     st.warning(f"Sobram {brl(sobra)} acima do que ela devia — confira o valor.")
             if st.button("Registrar recebimento", type="primary", key="rc_save", disabled=ramt <= 0):
@@ -1041,6 +1055,106 @@ e use o resultado como novo `PV` até a próxima data. A tabela *Memória de cá
                             for k in [k for k in st.session_state if k.startswith("q_")]:
                                 del st.session_state[k]
                             st.rerun()
+
+    # ================================================== VENDAS
+    with tab_sales:
+        sales_open = sales[sales["closed"] == 0] if not sales.empty else sales
+        if not sales.empty:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("A receber de vendas", brl(sales_open["remaining"].sum()))
+            c2.metric("Em atraso", brl(sales_open["overdue"].sum()))
+            c3.metric("Vendas em aberto", len(sales_open))
+            visual.table(sales.assign(parcelas=[f"{int(v)}x" if pd.notna(v) else "—" for v in sales["installments"]])
+                         [["person", "item", "date", "principal", "parcelas", "paid", "remaining", "overdue", "next_due",
+                           "note", "closed"]]
+                         .rename(columns={"person": "comprador", "item": "o que foi vendido", "date": "data",
+                                          "principal": "valor", "paid": "recebido", "remaining": "falta",
+                                          "overdue": "atrasado", "next_due": "próx. venc.", "note": "obs",
+                                          "closed": "quitada"})
+                         .style.format({"valor": brl, "recebido": brl, "falta": brl, "atrasado": brl}),
+                         use_container_width=True, hide_index=True)
+            if not sales_sched.empty:
+                st.subheader("Parcelas a receber (previsão de entrada)")
+                visual.table(sales_sched.merge(sales[["id", "item"]], left_on="loan_id", right_on="id")
+                             [["person", "item", "due_date", "amount", "remaining"]]
+                             .rename(columns={"person": "comprador", "item": "venda", "due_date": "vencimento",
+                                              "amount": "parcela", "remaining": "em aberto"})
+                             .style.format({"parcela": brl, "em aberto": brl}), use_container_width=True, hide_index=True)
+            if not sales_pays.empty:
+                st.subheader("Recebimentos de vendas")
+                visual.table(sales_pays[["person", "date", "amount", "note"]]
+                             .rename(columns={"person": "comprador", "date": "data", "amount": "valor", "note": "obs"})
+                             .style.format({"valor": brl}), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma venda registrada.")
+
+        # ---------------- nova venda
+        st.subheader("Nova venda de produto ou serviço")
+        st.caption("Venda parcelada (ex.: 5x no Pix). As parcelas entram como **previsão de entrada** em 'Quando vou receber' "
+                   "e na Previsão. Quando a pessoa fizer o Pix com o **valor de uma parcela**, ela é baixada sozinha.")
+        if "sv_pending_person" in st.session_state:
+            st.session_state["sv_person"] = st.session_state.pop("sv_pending_person")
+        with session() as conn:
+            pix_names = {r["name"]: r["match_name"] or "" for r in conn.execute("SELECT name, match_name FROM people")}
+        a, b = st.columns([3, 1], vertical_alignment="bottom")
+        sv_person = a.selectbox("Comprador", people, index=None, placeholder="Escolha uma pessoa já cadastrada",
+                                key="sv_person") or ""
+        if b.button("➕ Nova pessoa", key="sv_newbtn"):
+            new_person_dialog()
+        a, b = st.columns(2)
+        sv_item = a.text_input("O que foi vendido (produto ou serviço)", key="sv_item",
+                               placeholder="ex.: Notebook usado, Aula particular")
+        sv_total = b.number_input("Valor total da venda (R$)", min_value=0.0, step=50.0, key="sv_total")
+        a, b, c = st.columns(3)
+        sv_date = a.date_input("Data da venda", key="sv_date")
+        sv_n = b.number_input("Nº de parcelas", min_value=1, step=1, value=1, key="sv_n")
+        sv_first = c.date_input("1º vencimento", value=sv_date, key=f"sv_first_{sv_date.isoformat()}",
+                                help="Padrão: o dia da venda (a 1ª parcela é a entrada). Mude se a 1ª parcela for depois.")
+        sv_sched = lo.make_schedule(sv_total, 0.0, "mes", "simples", int(sv_n), sv_first, start=sv_date) if sv_total > 0 else []
+        if sv_sched:
+            st.info(f"Você vai receber **{brl(sum(x for _, x in sv_sched))}** em {int(sv_n)}x de **{brl(sv_sched[0][1])}**, "
+                    f"de {sv_sched[0][0]:%d/%m/%Y} a {sv_sched[-1][0]:%d/%m/%Y} (sem juros).")
+        sv_pix = st.text_input("Nome como aparece no Pix dela (para baixar a parcela sozinho)",
+                               value=pix_names.get(sv_person, ""), key=f"sv_pix_{sv_person}",
+                               help="Em branco = nenhum Pix é casado sozinho; você lança os recebimentos à mão. "
+                                    "Só baixa quando o valor do Pix é igual ao de uma parcela em aberto.")
+        sv_note = st.text_input("Observação (opcional)", key="sv_note")
+        if st.button("Registrar venda", type="primary", key="sv_save"):
+            if not sv_person or not sv_item.strip() or sv_total <= 0:
+                st.error("Escolha o comprador (ou cadastre) e informe o que foi vendido e o valor total.")
+            else:
+                with session() as conn:
+                    conn.execute("INSERT OR IGNORE INTO people(name) VALUES (?)", (sv_person,))
+                    if sv_pix.strip():
+                        conn.execute("UPDATE people SET match_name=? WHERE name=?", (sv_pix.strip(), sv_person))
+                    cur = conn.execute(
+                        "INSERT INTO loans(person, match_name, date, principal, note, rate, rate_period, compounding, kind, item) "
+                        "VALUES (?,?,?,?,?,0,'mes','simples','venda',?)",
+                        (sv_person, sv_pix.strip() or None, sv_date.isoformat(), sv_total, sv_note, sv_item.strip()))
+                    for due, amt in sv_sched:
+                        conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)",
+                                     (cur.lastrowid, due.isoformat(), amt))
+                    analytics.match_loan_payments(conn)
+                for k in [k for k in st.session_state if k.startswith("sv_")]:
+                    del st.session_state[k]
+                st.rerun()
+
+        if not sales_open.empty:
+            st.subheader("Lançar recebimento de venda")
+            st.caption("Use quando o valor não é o de uma parcela, ou a pessoa pagou por outro meio. O Pix com o valor "
+                       "exato de uma parcela já é baixado sozinho.")
+            a, b, c = st.columns(3)
+            lab = {f"{r.person} · {r.item} · falta {brl(r.remaining)}": r.id for r in sales_open.itertuples()}
+            sale_pick = lab[a.selectbox("Venda", list(lab), key="sr_sale")]
+            sr_date = b.date_input("Data do recebimento", key="sr_date")
+            sr_amt = c.number_input("Valor recebido (R$)", min_value=0.0, step=50.0, key="sr_amt")
+            if st.button("Registrar recebimento", type="primary", key="sr_save", disabled=sr_amt <= 0):
+                with session() as conn:
+                    conn.execute("INSERT INTO loan_payments(loan_id, date, amount, note, directed, order_mode) "
+                                 "VALUES (?,?,?,?,1,'antigas')", (sale_pick, sr_date.isoformat(), sr_amt, "manual"))
+                for k in [k for k in st.session_state if k.startswith("sr_")]:
+                    del st.session_state[k]
+                st.rerun()
 
     # ================================================== QUE EU DEVO
     with tab_debt:

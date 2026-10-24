@@ -102,6 +102,7 @@ class Loan:
     compounding: str = "simples"
     schedule: list = field(default_factory=list)   # [(vencimento, valor)] — vazio = sem data combinada
     closed: bool = False                           # marcado como quitado à mão (legado)
+    kind: str = "emprestimo"                       # emprestimo | venda (recebimento sem destino só baixa o mesmo tipo)
 
 
 @dataclass
@@ -170,8 +171,9 @@ def replay(loans: list[Loan], receipts: list[Receipt], asof: date) -> dict[int, 
         if r.directed:
             targets = [by_id[r.loan_id]]
         else:
-            person = by_id[r.loan_id].person
-            targets = sorted((l for l in loans if l.person == person and l.date <= r.date and not l.closed),
+            person, kind = by_id[r.loan_id].person, by_id[r.loan_id].kind
+            targets = sorted((l for l in loans if l.person == person and l.kind == kind and l.date <= r.date
+                              and not l.closed),
                              key=lambda l: (l.date, l.id), reverse=(r.order == "recentes"))
         left = r.amount
         for l in targets:
