@@ -33,6 +33,19 @@ services:
     ports: ["8502:8501"]
     restart: unless-stopped
 
+  demo:   # vitrine: TUDO fictício (gerado por `cli demo`), sem chaves — seguro para mostrar a outras pessoas
+          # sobe com: docker compose --profile demo up -d demo · mesma porta do "novo" (8503): rode um de cada vez
+          # regerar os dados: docker compose --profile demo run --rm demo python -m financas.cli demo
+    profiles: [demo]
+    build: .
+    container_name: financas-demo
+    environment: [FIN_DATA_DIR=/data, FIN_ENV_FILE=/data/.env, FIN_ENV_NAME=demo]
+    volumes:
+      - ./data-demo:/data
+      - ./financas:/app/financas
+      - ./rules.yaml:/app/rules.yaml:ro
+    ports: ["8503:8501"]
+
   novo:   # "primeiro uso": pasta de dados vazia, sem chaves — para ver o painel como uma pessoa nova vê
           # sobe com: docker compose --profile novo up -d novo · zerar: parar, apagar ./data-novo e subir de novo
     profiles: [novo]

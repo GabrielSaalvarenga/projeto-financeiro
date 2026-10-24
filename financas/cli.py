@@ -33,7 +33,7 @@ def main(argv: list[str]) -> int:
     elif cmd == "demo":
         from .demo import seed
         seed()
-        print("Dados fictícios gravados. Rode o painel com FIN_DATA_DIR=data/demo")
+        print("Dados fictícios gravados. Rode o painel com a mesma FIN_DATA_DIR (ex.: data-demo)")
     else:
         print(__doc__)
         return 1
