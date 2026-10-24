@@ -60,3 +60,26 @@ def test_refund_reduces_spending_not_income():
     sp, inc = analytics.spending(df), analytics.income(df)
     assert round(sp["value"].sum(), 2) == 563.77      # gasto líquido da viagem
     assert inc["amount"].sum() == 3000.0              # reembolso não vira renda
+
+
+def test_product_links():
+    from financas.categorize import add_product_link, delete_product_link, recategorize
+    seed()
+    with session() as conn:
+        base = {"account_id": None, "source": "t", "payment_method": "CARD"}
+        for i, (d, desc, amt) in enumerate([("2026-01-19", "AMAZONMKTPLC X SAO PAULO BRA", -486.66),
+                                            ("2026-02-19", "AMAZONMKTPLC X SAO PAULO BRA", -486.66),
+                                            ("2026-02-20", "AMAZONMKTPLC X SAO PAULO BRA", -50.0),
+                                            ("2026-03-11", "MERCADO MERCADOLIVRE CAJAMAR BRA", -111.99)]):
+            conn.execute("INSERT INTO transactions(id, source, date, description, amount, category) VALUES (?,?,?,?,?,?)",
+                         (f"p{i}", "t", d, desc, amt, "Mercado" if "MERCADO" in desc else "Compras online"))
+        n = add_product_link(conn, "Switch 2", pattern="amazonmktplc", amount=486.66)
+        assert n == 2  # só o valor igual; a compra de R$ 50 não entra
+        add_product_link(conn, "Monitor", pattern="mercado mercadolivre", amount=111.99)
+        row = conn.execute("SELECT product, category FROM transactions WHERE id='p3'").fetchone()
+        assert (row["product"], row["category"]) == ("Monitor", "Compras online")  # sai de 'Mercado'
+        recategorize(conn)  # reaplicar tudo mantém o vínculo
+        assert conn.execute("SELECT COUNT(*) FROM transactions WHERE product='Switch 2'").fetchone()[0] == 2
+        assert conn.execute("SELECT product FROM transactions WHERE id='p2'").fetchone()[0] is None
+        delete_product_link(conn, conn.execute("SELECT id FROM product_links WHERE product='Monitor'").fetchone()[0])
+        assert conn.execute("SELECT product FROM transactions WHERE id='p3'").fetchone()[0] is None

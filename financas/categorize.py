@@ -90,6 +90,7 @@ def recategorize(conn, only_missing: bool = False) -> int:
         cat = r["manual_category"] or r["force_category"] or categorize(r["description"], r["counterparty"], r["source_category"],
                                                  r["amount"], custom, r["counterparty_ispb"])
         conn.execute("UPDATE transactions SET category=? WHERE id=?", (cat, r["id"]))
+    apply_product_links(conn)
     return len(rows)
 
 
@@ -138,3 +139,52 @@ def propagate_installment_tags(conn) -> int:
             conn.execute("UPDATE transactions SET tag=? WHERE id=?", (r["inherited"], r["id"]))
             n += 1
     return n
+
+
+def store_pattern(description: str | None) -> str:
+    """Sugestão de nome da loja: as 2 primeiras palavras da descrição ('amazon marketplace')."""
+    return " ".join(normalize(description).split()[:2])
+
+
+def apply_product_links(conn) -> int:
+    """Marca cada lançamento com o produto vinculado (loja + valor, ou um lançamento) e põe na categoria do vínculo.
+
+    Roda do zero a cada chamada, então apagar um vínculo desfaz a marca. Correção manual de categoria vence.
+    """
+    links = conn.execute("SELECT product, pattern, amount, tx_id, category FROM product_links ORDER BY id").fetchall()
+    conn.execute("UPDATE transactions SET product=NULL WHERE product IS NOT NULL")
+    n = 0
+    for t in conn.execute("SELECT id, description, counterparty, amount, manual_category FROM transactions WHERE amount < 0").fetchall():
+        norm = f" {normalize(f'{t['description'] or ''} {t['counterparty'] or ''}')} "
+        for ln in links:  # o vínculo mais antigo vence
+            if ln["tx_id"]:
+                hit = ln["tx_id"] == t["id"]
+            else:
+                hit = bool(ln["pattern"]) and f" {ln['pattern']} " in norm and (
+                    ln["amount"] is None or abs(abs(t["amount"]) - ln["amount"]) < 0.01)
+            if hit:
+                cat = t["manual_category"] or ln["category"] or "Compras online"
+                conn.execute("UPDATE transactions SET product=?, category=? WHERE id=?", (ln["product"], cat, t["id"]))
+                n += 1
+                break
+    return n
+
+
+def add_product_link(conn, product: str, *, pattern: str | None = None, amount: float | None = None,
+                     tx_id: str | None = None, category: str = "Compras online") -> int:
+    """Vincula produto a uma loja+valor (toda parcela igual) ou a um lançamento. Retorna nº de lançamentos marcados."""
+    product = (product or "").strip()
+    if not product:
+        raise ValueError("nome do produto vazio")
+    pattern = normalize(pattern) if pattern else None
+    if not tx_id and not pattern:
+        raise ValueError("informe a loja ou o lançamento")
+    conn.execute("INSERT INTO product_links(product, pattern, amount, tx_id, category) VALUES (?,?,?,?,?)",
+                 (product, pattern, round(abs(amount), 2) if amount is not None else None, tx_id, category))
+    return apply_product_links(conn) and conn.execute("SELECT COUNT(*) FROM transactions WHERE product=?",
+                                                      (product,)).fetchone()[0]
+
+
+def delete_product_link(conn, link_id: int) -> None:
+    conn.execute("DELETE FROM product_links WHERE id=?", (link_id,))
+    recategorize(conn)

@@ -3,6 +3,10 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.2.0 — produtos nas compras online
+- Nova área **Vincular produto** (aba Gastos): diga qual produto foi uma compra; com "loja + valor", toda parcela igual (passada e futura) é marcada sozinha e vai para Compras online.
+- O ranking mostra "Compras online › Produto" e a tabela de lançamentos ganhou a coluna Produto.
+
 ## 0.1.1 — ajustes em Gastos
 - Gráficos mensais mostram o mês por extenso na horizontal (maio/26, junho/26…).
 - Corrigido: a tabela "Ranking no período" não mostrava o nome das categorias.

@@ -21,8 +21,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from financas import __version__, analytics, backup, config, settings  # noqa: E402
-from financas.categorize import (add_rule, all_categories, all_tags, delete_rule, recategorize,  # noqa: E402
-                                 set_manual, set_tag)
+from financas.categorize import (add_product_link, add_rule, all_categories, all_tags, delete_product_link,  # noqa: E402
+                                 delete_rule, recategorize, set_manual, set_tag, store_pattern)
 from financas.db import session as db_session  # noqa: E402
 
 from financas.ui import theme as visual  # noqa: E402
@@ -259,10 +259,11 @@ elif page == "Gastos":
     left, right = st.columns([1, 1])
     with left:
         st.subheader("Ranking no período")
-        rank = win.groupby("category")["value"].agg(["sum", "count"]).sort_values("sum", ascending=False)
+        label = win["category"] + win["product"].map(lambda p: "" if pd.isna(p) or not p else f" › {p}")
+        rank = win.groupby(label)["value"].agg(["sum", "count"]).sort_values("sum", ascending=False)
         rank["média/mês"] = rank["sum"] / win["month"].nunique()
         visual.table(rank.rename(columns={"sum": "total", "count": "lançamentos"}).reset_index()
-                     .rename(columns={"category": "categoria"})
+                     .rename(columns={"index": "categoria", "category": "categoria"})
                      .style.format({"total": brl, "média/mês": brl}), use_container_width=True)
     with right:
         st.subheader("Recorrentes detectados")
@@ -280,8 +281,8 @@ elif page == "Gastos":
         show = show[(show["description"].fillna("") + " " + show["counterparty"].fillna(""))
                     .str.contains(q, case=False)]
     visual.table(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
-        ["date", "description", "counterparty", "category", "tag", "value", "institution", "installment_number",
-         "total_installments"]].rename(columns={"tag": "subdivisão"})
+        ["date", "description", "counterparty", "category", "product", "tag", "value", "institution",
+         "installment_number", "total_installments"]].rename(columns={"tag": "subdivisão", "product": "produto"})
         .style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}, na_rep=""),
         use_container_width=True, hide_index=True)
     st.caption("Valores negativos em 'value' são reembolsos (ex.: amigos devolvendo a parte deles) e abatem o gasto.")
@@ -331,6 +332,45 @@ elif page == "Gastos":
                 st.rerun()
     if msg := st.session_state.pop("fix_msg", None):
         st.success(msg)
+
+    st.subheader("Vincular produto")
+    st.caption("Diga qual produto foi uma compra. Com 'loja + valor', toda parcela igual (as de meses passados e as "
+               "futuras) já aparece como esse produto, e o ranking mostra 'Compras online › Produto'.")
+    if not pick.empty:
+        pchosen = labels[st.selectbox("Lançamento da compra", list(labels), key="prod_pick")]
+        with st.form("link_product"):
+            pname = st.text_input("Produto", txt(pchosen.product), key=f"prod_name_{pchosen.id}",
+                                  placeholder="ex.: Projetor XGIMI Horizon Ultra")
+            pscope = st.radio("Vale para", ["Só este lançamento", "Toda compra desta loja com este valor"],
+                              index=1 if pd.notna(pchosen.total_installments) else 0, horizontal=True)
+            pstore = st.text_input("Loja (nome que identifica)", store_pattern(txt(pchosen.description)),
+                                   key=f"prod_store_{pchosen.id}",
+                                   help="Duas primeiras palavras da descrição. Acentos e maiúsculas não importam.")
+            if st.form_submit_button("Vincular produto") and pname.strip():
+                with session() as conn:
+                    if pscope == "Só este lançamento":
+                        n = add_product_link(conn, pname, tx_id=pchosen.id)
+                    else:
+                        n = add_product_link(conn, pname, pattern=pstore, amount=pchosen.value)
+                st.session_state["fix_msg"] = f"**{pname.strip()}** vinculado a {n} lançamento(s), agora em Compras online."
+                st.rerun()
+    with session() as conn:
+        plinks = pd.read_sql("SELECT l.id, l.product, COALESCE(l.pattern, 'lançamento único') AS loja, l.amount, "
+                             "(SELECT COUNT(*) FROM transactions t WHERE t.product = l.product) AS lançamentos "
+                             "FROM product_links l ORDER BY l.id", conn)
+    if not plinks.empty:
+        with st.expander(f"Produtos vinculados ({len(plinks)})"):
+            visual.table(plinks.drop(columns="id").rename(columns={"product": "produto", "amount": "valor"})
+                         .style.format({"valor": lambda v: "" if pd.isna(v) else brl(v)}),
+                         use_container_width=True, hide_index=True)
+            with st.form("delete_product_link"):
+                opts = {f"{r.product} · {r.loja}": r.id for r in plinks.itertuples()}
+                rmp = st.selectbox("Apagar vínculo", ["—"] + list(opts))
+                if st.form_submit_button("Apagar") and rmp != "—":
+                    with session() as conn:
+                        delete_product_link(conn, opts[rmp])
+                    st.session_state["fix_msg"] = f"Vínculo **{rmp}** apagado; lançamentos voltaram à categoria das regras."
+                    st.rerun()
 
     with session() as conn:
         tagged = pd.read_sql("SELECT tag, category, date, amount FROM transactions WHERE tag IS NOT NULL", conn,

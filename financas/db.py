@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     total_installments INTEGER,
     raw                TEXT,                 -- JSON original, para reprocessar
     manual_category    TEXT,                 -- correção do usuário só para este lançamento (vence tudo)
-    tag                TEXT                  -- subdivisão livre (ex.: viagem 'Capitólio 2025')
+    tag                TEXT,                 -- subdivisão livre (ex.: viagem 'Capitólio 2025')
+    product            TEXT                  -- produto comprado, vindo de product_links (ex.: 'Projetor XGIMI')
 );
 CREATE INDEX IF NOT EXISTS ix_tx_date ON transactions(date);
 
@@ -196,6 +197,16 @@ CREATE TABLE IF NOT EXISTS other_income (
     note      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS product_links (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    product    TEXT NOT NULL,                -- nome do produto
+    pattern    TEXT,                         -- loja (nome normalizado); com amount, vale para toda parcela igual
+    amount     REAL,                         -- valor da compra/parcela (positivo)
+    tx_id      TEXT,                         -- ou um lançamento específico
+    category   TEXT DEFAULT 'Compras online',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS user_rules (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     pattern    TEXT NOT NULL UNIQUE,         -- nome normalizado (sem acento, minúsculo)
@@ -258,6 +269,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE transactions ADD COLUMN counterparty_ispb TEXT")
     if "tag" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN tag TEXT")
+    if "product" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN product TEXT")
     acols = {r["name"] for r in conn.execute("PRAGMA table_info(accounts)")}
     for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT", "force_category TEXT"):
         if col.split()[0] not in acols:
