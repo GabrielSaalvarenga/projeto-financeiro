@@ -82,11 +82,16 @@ def fold_categories(df: pd.DataFrame, col: str, value: str) -> tuple[pd.DataFram
 
 
 def style(fig, height=340, month_axis=True):
-    fig.update_layout(height=height, margin=dict(l=8, r=8, t=24, b=8), legend_title_text="",
+    fig.update_layout(height=height, margin=dict(l=8, r=28 if month_axis else 8, t=24, b=8), legend_title_text="",
                       bargap=0.45, hovermode="x unified" if fig.data and fig.data[0].type == "scatter" else "closest")
     fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)", zeroline=False, tickprefix="R$ ", separatethousands=True)
     fig.update_xaxes(showgrid=False, type="category" if month_axis else None,
-                     **({"tickangle": -90, "dtick": 1} if month_axis else {}))
+                     **({"tickangle": 0, "dtick": 1} if month_axis else {}))
+    if month_axis:
+        months = sorted({str(x) for t in fig.data for x in (t.x if t.x is not None else [])})
+        if months and all(re.fullmatch(r"\d{4}-\d{2}", m) for m in months):
+            fig.update_xaxes(categoryorder="array", categoryarray=months, tickmode="array", tickvals=months,
+                             ticktext=[f"{MESES[int(m[5:]) - 1].lower()}/{m[2:4]}" for m in months])
     visual.style_figure(fig)
     return fig
 
@@ -256,7 +261,8 @@ elif page == "Gastos":
         st.subheader("Ranking no período")
         rank = win.groupby("category")["value"].agg(["sum", "count"]).sort_values("sum", ascending=False)
         rank["média/mês"] = rank["sum"] / win["month"].nunique()
-        visual.table(rank.rename(columns={"sum": "total", "count": "lançamentos"})
+        visual.table(rank.rename(columns={"sum": "total", "count": "lançamentos"}).reset_index()
+                     .rename(columns={"category": "categoria"})
                      .style.format({"total": brl, "média/mês": brl}), use_container_width=True)
     with right:
         st.subheader("Recorrentes detectados")
