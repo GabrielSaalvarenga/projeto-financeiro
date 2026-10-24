@@ -3,6 +3,9 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.4.0 — aviso de versão nova
+- O painel avisa na barra lateral quando sai uma versão nova no GitHub, com link para as novidades. Só consulta o GitHub (no máximo a cada 6 horas) e não envia nada seu; dá para desligar em Configurações › Atualizações.
+
 ## 0.3.0 — vendas e demonstração
 - Tela **Empréstimos e vendas**, com nova aba **Vendas**: venda parcelada de produto ou serviço entra como previsão de entrada (também na Previsão e na Visão geral).
 - Baixa automática: Pix da pessoa com o valor de uma parcela em aberto baixa a parcela sozinho (categoria *Venda recebida*, conta como entrada). Pix com outro valor, você lança à mão.

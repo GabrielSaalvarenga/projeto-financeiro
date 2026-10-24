@@ -181,6 +181,21 @@ if os.getenv("FIN_ENV_NAME") == "dev":
     st.sidebar.warning("🧪 **DESENVOLVIMENTO** — dados de teste (clone de prod)")
 st.sidebar.caption(f"Base: `{DB}` · versão {__version__}")
 
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _new_release():
+    from financas import updates
+    return updates.available(__version__)
+
+
+if os.getenv("FIN_ENV_NAME") != "dev":
+    with db_session() as _c:
+        _check = settings.get(_c, "update_check") == "1"
+    _rel = _new_release() if _check else None
+    if _rel:
+        st.sidebar.info(f"🆕 **Versão {_rel['version']} disponível** (você usa {__version__}). "
+                        f"[Ver novidades e como atualizar]({_rel['url']})")
+
 # ------------------------------------------------------------------ Começar
 if page == "Começar":
     from financas.ui import guide
@@ -1439,6 +1454,17 @@ elif page == "Configurações":
             st.info("Aplicando o tema…")
             reload_page()
             st.stop()
+
+    st.subheader("Atualizações")
+    with db_session() as conn:
+        chk = settings.get(conn, "update_check") == "1"
+    new_chk = st.toggle("Avisar quando houver versão nova", value=chk)
+    st.caption("Consulta o GitHub no máximo a cada 6 horas e não envia nenhum dado seu. "
+               "Atualizar continua sendo manual: veja \"Como atualizar\" no README.")
+    if new_chk != chk:
+        with db_session() as conn:
+            settings.set_(conn, "update_check", "1" if new_chk else "0")
+        st.rerun()
 
     st.subheader("Conexões")
     from financas import connections

@@ -167,6 +167,7 @@ $env:FIN_DATA_DIR="data/demo"; .venv\Scripts\streamlit run financas\ui\app.py
   Caminho B) e o arquivo `.env`.
 - **Usou Git:** `git pull`. No Caminho B, rode também `docker compose -f docker-compose.simples.yml up -d --build`.
 
+O painel avisa na barra lateral quando sai versão nova (dá para desligar em Configurações › Atualizações).
 As novidades de cada versão estão no [CHANGELOG](CHANGELOG.md).
 
 ## Guia de uso
