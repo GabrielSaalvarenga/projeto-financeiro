@@ -50,7 +50,7 @@ Estou disponibilizando porque pode ser útil para mais gente. Algumas coisas par
 
 ## Como instalar
 
-Escolha **um** dos dois caminhos. Em ambos você começa baixando o projeto.
+Escolha o jeito mais fácil (duplo clique) ou **um** dos dois caminhos. Em ambos você começa baixando o projeto.
 
 ### Passo 0 — Baixar o projeto
 
@@ -67,6 +67,24 @@ Para abrir um terminal dentro da pasta: no **Mac**, clique com o botão direito 
 Novo Terminal na Pasta*; no **Windows**, abra a pasta, clique na barra de endereço, digite `cmd` e aperte Enter.
 
 ---
+
+### Jeito mais fácil — duplo clique (precisa do Python 3.12)
+
+Depois de baixar e descompactar (Passo 0), dê **dois cliques** no arquivo do seu sistema:
+
+| Sistema | Arquivo | Observação |
+|---|---|---|
+| **Windows** | `Iniciar.bat` | Se não houver Python, ele oferece instalar o 3.12 pelo `winget`. Se aparecer "O Windows protegeu o computador", clique em *Mais informações → Executar assim mesmo*. |
+| **Mac** | `Iniciar.command` | Na primeira vez, clique com o botão direito → *Abrir* → *Abrir* (o Mac bloqueia arquivos baixados). Precisa do [Python](https://www.python.org/downloads/) instalado. |
+| **Linux** | `Iniciar.sh` | No terminal: `bash Iniciar.sh` (ou marque como executável e abra). Precisa de `python3` e `python3-venv`. |
+
+Na primeira vez ele prepara tudo sozinho (leva alguns minutos e precisa de internet) e abre o painel em
+**http://localhost:8501**. Nas próximas, abre em segundos. Para fechar, feche a janela preta. Se o painel já estiver aberto,
+o atalho só abre o navegador. Seus dados ficam na pasta `data/`.
+
+> Testado no Mac e no Linux (Ubuntu). O `Iniciar.bat` do Windows ainda não foi testado em um computador real.
+
+Se preferir fazer os passos à mão, siga o Caminho A ou o B abaixo.
 
 ### Caminho A — Rodar direto no computador (precisa do Python)
 
@@ -163,8 +181,8 @@ $env:FIN_DATA_DIR="data/demo"; .venv\Scripts\streamlit run financas\ui\app.py
 
 ## Como atualizar para uma versão nova
 
-- **Baixou o ZIP:** baixe o ZIP novo e copie para a pasta nova os seus dados (`data/` no Caminho A, `dados/` no
-  Caminho B) e o arquivo `.env`.
+- **Baixou o ZIP:** baixe o ZIP novo e copie para a pasta nova os seus dados (`data/` no duplo clique e no Caminho A,
+  `dados/` no Caminho B) e o arquivo `.env`. No duplo clique, a primeira abertura da pasta nova reinstala as dependências.
 - **Usou Git:** `git pull`. No Caminho B, rode também `docker compose -f docker-compose.simples.yml up -d --build`.
 
 O painel avisa na barra lateral quando sai versão nova (dá para desligar em Configurações › Atualizações).

@@ -3,6 +3,9 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.5.0 — abrir com duplo clique
+- Novos atalhos `Iniciar.bat` (Windows), `Iniciar.command` (Mac) e `Iniciar.sh` (Linux): preparam o Python e as dependências sozinhos na primeira vez e abrem o painel. Se já estiver aberto, só abrem o navegador.
+
 ## 0.4.0 — aviso de versão nova
 - O painel avisa na barra lateral quando sai uma versão nova no GitHub, com link para as novidades. Só consulta o GitHub (no máximo a cada 6 horas) e não envia nada seu; dá para desligar em Configurações › Atualizações.
 
