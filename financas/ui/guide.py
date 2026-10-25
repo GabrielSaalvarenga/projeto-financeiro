@@ -69,6 +69,16 @@ e corretoras (Inter, XP, Nubank, Itaú…). O uso pessoal pelo **Meu Pluggy** é
 2. Cole **Client ID**, **Client Secret** e o **ID da conexão** (se tiver mais de um, separe por vírgula).
 3. Clique em **Testar e salvar**. O teste mostra os bancos encontrados; se algo estiver errado, nada é salvo.
 
+#### E. Mais de uma conta Pluggy (opcional)
+Serve para **casal/família** (cada pessoa com a sua conta Pluggy) ou quando o teste de 15 dias da primeira conta
+acabou e você criou **outra conta de desenvolvedor** para conectar mais bancos.
+1. Faça os passos A–C com a outra conta e copie o Client ID, o Client Secret e o ID da conexão.
+2. Em **Configurações → Conexões**, abra **Pluggy — conta 2**, cole os dados e dê um nome (ex.: *Esposa*).
+3. Depois de sincronizar, os dados das duas contas aparecem **juntos**. Quando há mais de uma conta, a barra lateral
+   ganha o filtro **Pessoa / conta** para ver só uma delas (vale para gastos, cartões e saldos).
+- Cada conta Pluggy é coletada separadamente: se uma falhar, a outra continua.
+- Um Pix entre as duas contas aparece como saída em uma e entrada na outra.
+
 **Bom saber**
 - Os dados atualizam **1 vez por dia** na Pluggy.
 - A autorização do Open Finance vence (em geral em 12 meses) e é renovada **de graça** no app do banco.

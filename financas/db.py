@@ -274,7 +274,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "product" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN product TEXT")
     acols = {r["name"] for r in conn.execute("PRAGMA table_info(accounts)")}
-    for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT", "force_category TEXT"):
+    for col in ("credit_limit REAL", "available_limit REAL", "bill_due_date TEXT", "force_category TEXT", "owner TEXT"):
         if col.split()[0] not in acols:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col}")
     for table, new in (("loans", ("rate REAL DEFAULT 0", "rate_period TEXT DEFAULT 'mes'",

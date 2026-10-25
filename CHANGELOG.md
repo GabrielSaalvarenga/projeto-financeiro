@@ -3,6 +3,12 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.6.0 — duas contas Pluggy
+- Dá para conectar **duas contas da Pluggy ao mesmo tempo** (Configurações → Conexões → *Pluggy — conta 2*): serve para marido e mulher, ou para quem criou uma segunda conta de desenvolvedor depois que o teste de 15 dias da primeira acabou.
+- Os dados aparecem juntos; com mais de uma conta, a barra lateral ganha o filtro **Pessoa / conta** (gastos, cartões e saldos).
+- Cada conta é coletada separadamente: se uma falhar, a outra continua. Quem usa uma conta só não precisa mudar nada.
+- **Não pôde ser testado com duas contas reais da Pluggy** (testes automáticos com a API simulada); relate problemas nas Issues.
+
 ## 0.5.0 — abrir com duplo clique
 - Novos atalhos `Iniciar.bat` (Windows), `Iniciar.command` (Mac) e `Iniciar.sh` (Linux): preparam o Python e as dependências sozinhos na primeira vez e abrem o painel. Se já estiver aberto, só abrem o navegador.
 

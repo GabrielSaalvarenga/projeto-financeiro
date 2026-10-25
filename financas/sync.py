@@ -13,9 +13,9 @@ from .importers import bills_folder, ofx
 def run_all() -> list[tuple[str, bool, str]]:
     report = []
     with session() as conn:
-        for name, fn in (("pluggy", pluggy.sync), ("binance", binance.sync)):
+        for name, fn in (("pluggy", pluggy.sync_all), ("binance", lambda c: [("binance", True, binance.sync(c))])):
             try:
-                report.append((name, True, fn(conn)))
+                report.extend(fn(conn))
             except Exception as e:  # noqa: BLE001 — registrar e seguir
                 log_sync(conn, name, False, str(e))
                 report.append((name, False, str(e)))

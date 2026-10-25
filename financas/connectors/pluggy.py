@@ -71,16 +71,37 @@ def _counterparty(tx: dict) -> str | None:
     return merchant.get("name") or merchant.get("businessName")
 
 
-def sync(conn, days: int = 365) -> str:
-    if not (config.PLUGGY_CLIENT_ID and config.PLUGGY_CLIENT_SECRET and config.PLUGGY_ITEM_IDS):
+def sync_all(conn, days: int = 365) -> list[tuple[str, bool, str]]:
+    """Coleta cada conta Pluggy configurada; uma falhar não impede as outras. Devolve (nome, ok, mensagem)."""
+    accounts = config.PLUGGY_ACCOUNTS
+    if not accounts:
         raise RuntimeError("Pluggy não configurado (.env: PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET, PLUGGY_ITEM_IDS)")
+    report = []
+    for acc in accounts:
+        name = "pluggy" if acc["slot"] == 1 and len(accounts) == 1 else f"pluggy ({acc['label'] or acc['slot']})"
+        try:
+            report.append((name, True, sync(conn, days, acc)))
+        except Exception as e:  # noqa: BLE001
+            log_sync(conn, "pluggy", False, f"{name}: {e}")
+            report.append((name, False, str(e)))
+        conn.commit()
+    return report
 
-    api = Pluggy(config.PLUGGY_CLIENT_ID, config.PLUGGY_CLIENT_SECRET)
+
+def sync(conn, days: int = 365, cfg: dict | None = None) -> str:
+    """Coleta uma conta Pluggy (`cfg` = um item de config.PLUGGY_ACCOUNTS; sem ele, a primeira configurada)."""
+    if cfg is None:
+        if not config.PLUGGY_ACCOUNTS:
+            raise RuntimeError("Pluggy não configurado (.env: PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET, PLUGGY_ITEM_IDS)")
+        cfg = config.PLUGGY_ACCOUNTS[0]
+    # só vagas extras (2, 3…) ganham o nome como dono; a vaga 1 fica como sempre foi, a menos que tenha nome
+    owner = cfg["label"] or None
+    api = Pluggy(cfg["client_id"], cfg["client_secret"])
     since = (date.today() - timedelta(days=days)).isoformat()
     n_tx = n_inv = 0
     today = date.today().isoformat()
 
-    for item_id in config.PLUGGY_ITEM_IDS:
+    for item_id in cfg['item_ids']:
         item = api.get(f"/items/{item_id}")
         institution = (item.get("connector") or {}).get("name", item_id)
         accounts = api.get("/accounts", itemId=item_id).get("results", [])
@@ -91,16 +112,16 @@ def sync(conn, days: int = 365) -> str:
         for acc in accounts:
             conn.execute(
                 """INSERT INTO accounts(id, source, institution, name, type, balance, balance_date,
-                   credit_limit, available_limit, bill_due_date)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                   credit_limit, available_limit, bill_due_date, owner)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET balance=excluded.balance, balance_date=excluded.balance_date,
-                   name=excluded.name, institution=excluded.institution,
+                   name=excluded.name, institution=excluded.institution, owner=excluded.owner,
                    credit_limit=excluded.credit_limit, available_limit=excluded.available_limit,
                    bill_due_date=excluded.bill_due_date, updated_at=CURRENT_TIMESTAMP""",
                 (acc["id"], "pluggy", institution, acc.get("name"), acc.get("type"), acc.get("balance"), today,
                  (acc.get("creditData") or {}).get("creditLimit"),
                  (acc.get("creditData") or {}).get("availableCreditLimit"),
-                 ((acc.get("creditData") or {}).get("balanceDueDate") or "")[:10] or None),
+                 ((acc.get("creditData") or {}).get("balanceDueDate") or "")[:10] or None, owner),
             )
             for tx in api.transactions(acc["id"], since):
                 cc = tx.get("creditCardMetadata") or {}
@@ -127,6 +148,8 @@ def sync(conn, days: int = 365) -> str:
                          bill.get("minimumPaymentAmount"), json.dumps(bill, ensure_ascii=False)),
                     )
 
+        # duas pessoas na mesma corretora não podem se sobrepor: o nome vira parte da origem (só vaga 2 em diante)
+        holdings_source = f"{institution.lower()} ({owner})" if cfg["slot"] > 1 else institution.lower()
         used: dict[str, int] = {}
         for inv in api.get("/investments", itemId=item_id).get("results", []):
             # vários títulos têm o mesmo nome (ex.: 4 CDBs do mesmo banco): diferencia pelo vencimento
@@ -139,7 +162,7 @@ def sync(conn, days: int = 365) -> str:
             conn.execute(
                 """INSERT OR REPLACE INTO holdings(snapshot, source, asset, asset_type, quantity, price_usd, value_brl)
                    VALUES (?,?,?,?,?,?,?)""",
-                (today, institution.lower(), label, inv.get("type"),
+                (today, holdings_source, label, inv.get("type"),
                  inv.get("quantity"), None, inv.get("balance") or 0),
             )
             n_inv += 1

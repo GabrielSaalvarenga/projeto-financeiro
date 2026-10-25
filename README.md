@@ -163,6 +163,7 @@ Apagar ou recriar o container **não apaga** seus dados.
    - **Pluggy** (Open Finance: Inter, XP e outros): crie as chaves em [dashboard.pluggy.ai](https://dashboard.pluggy.ai).
      O teste gratuito dura cerca de 15 dias: conecte todos os seus bancos dentro desse prazo (o passo a passo
      completo está na aba *Começar*).
+   - **Segunda conta Pluggy** (opcional, para casal/família ou depois do fim do teste de 15 dias): em *Configurações → Conexões → Pluggy — conta 2*; passo a passo na aba *Começar*. Os dados das duas aparecem juntos, com filtro por pessoa.
    - **Binance**: crie uma chave com **apenas "Enable Reading"** marcado, sem trade e sem saque.
 3. Vá em **Sincronizar** e clique em **Sincronizar tudo**. As outras abas se enchem de dados.
 

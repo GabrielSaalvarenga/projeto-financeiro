@@ -38,15 +38,20 @@ class Source:
     required: tuple[str, ...] = field(default=())
 
 
-def _test_pluggy(v: dict) -> str:
-    r = requests.post("https://api.pluggy.ai/auth", json={"clientId": v["PLUGGY_CLIENT_ID"],
-                                                         "clientSecret": v["PLUGGY_CLIENT_SECRET"]}, timeout=30)
+def _test_pluggy(slot: int) -> Callable[[dict], str]:
+    return lambda v: _check_pluggy(v, slot)
+
+
+def _check_pluggy(v: dict, slot: int) -> str:
+    k = lambda name: config.pluggy_key(slot, name)  # noqa: E731
+    r = requests.post("https://api.pluggy.ai/auth", json={"clientId": v[k("CLIENT_ID")],
+                                                         "clientSecret": v[k("CLIENT_SECRET")]}, timeout=30)
     if r.status_code in (400, 401, 403):
         raise ValueError("Client ID ou Client Secret recusados pela Pluggy")
     r.raise_for_status()
     s = requests.Session()
     s.headers["X-API-KEY"] = r.json()["apiKey"]
-    ids = [i.strip() for i in v.get("PLUGGY_ITEM_IDS", "").split(",") if i.strip()]
+    ids = [i.strip() for i in v.get(k("ITEM_IDS"), "").split(",") if i.strip()]
     if not ids:
         return "Chaves aceitas, mas nenhuma conexão (item) informada — nada será coletado."
     out = []
@@ -94,16 +99,29 @@ def _test_binance(v: dict) -> str:
     return f"Conectado — chave só de leitura, {ip}; {n} ativo(s) com saldo."
 
 
+def _pluggy_source(slot: int) -> Source:
+    k = lambda name: config.pluggy_key(slot, name)  # noqa: E731
+    first = slot == 1
+    return Source(
+        "pluggy" if first else f"pluggy{slot}",
+        "Pluggy — Open Finance (Inter, XP…)" if first else f"Pluggy — conta {slot} (outra pessoa ou outra conta Pluggy)",
+        [Field(k("CLIENT_ID"), "Client ID", help="dashboard.pluggy.ai → Applications"),
+         Field(k("CLIENT_SECRET"), "Client Secret", help="dashboard.pluggy.ai → Applications"),
+         Field(k("ITEM_IDS"), "IDs das conexões (items)", secret=False,
+               help="Um por instituição conectada no app Meu Pluggy, separados por vírgula"),
+         Field(k("LABEL"), "Nome desta conta" + ("" if first else " (ex.: Esposa)"), secret=False,
+               help="Ex.: Eu, Esposa, Empresa. Aparece ao lado das contas e investimentos desta conta Pluggy.")],
+        how_to=("Conecte seus bancos no app **Meu Pluggy**, crie uma aplicação em **dashboard.pluggy.ai** e copie o "
+                "Client ID e o Client Secret. Os IDs das conexões aparecem no Meu Pluggy. Só leitura: o painel nunca "
+                "inicia pagamento ou Pix. Passo a passo completo na aba **Começar**." if first else
+                "Use quando outra pessoa (ex.: cônjuge) tem a própria conta na Pluggy, ou quando você criou uma segunda "
+                "conta de desenvolvedor porque o teste da primeira passou do prazo. Cada conta tem seu Client ID, "
+                "Client Secret e IDs de conexão. Os dados das duas aparecem juntos no painel."),
+        test=_test_pluggy(slot), required=(k("CLIENT_ID"), k("CLIENT_SECRET")))
+
+
 SOURCES = [
-    Source("pluggy", "Pluggy — Open Finance (Inter, XP…)", [
-        Field("PLUGGY_CLIENT_ID", "Client ID", help="dashboard.pluggy.ai → Applications"),
-        Field("PLUGGY_CLIENT_SECRET", "Client Secret", help="dashboard.pluggy.ai → Applications"),
-        Field("PLUGGY_ITEM_IDS", "IDs das conexões (items)", secret=False,
-              help="Um por instituição conectada no app Meu Pluggy, separados por vírgula"),
-    ], how_to="Conecte seus bancos no app **Meu Pluggy**, crie uma aplicação em **dashboard.pluggy.ai** e copie o "
-              "Client ID e o Client Secret. Os IDs das conexões aparecem no Meu Pluggy. Só leitura: o painel nunca "
-              "inicia pagamento ou Pix. Passo a passo completo na aba **Começar**.",
-       test=_test_pluggy, required=("PLUGGY_CLIENT_ID", "PLUGGY_CLIENT_SECRET")),
+    *[_pluggy_source(n) for n in config.PLUGGY_SLOTS],
     Source("binance", "Binance — saldos de cripto", [
         Field("BINANCE_API_KEY", "API Key"),
         Field("BINANCE_API_SECRET", "Secret Key"),
@@ -137,7 +155,7 @@ def save(source: Source, typed: dict) -> list[str]:
     os.chmod(env, 0o600)  # só o dono do arquivo lê as chaves
     for f in source.fields:
         val = (typed.get(f.key) or "").strip()
-        if f.key == "PLUGGY_ITEM_IDS" and val:
+        if f.key.endswith("ITEM_IDS") and val:
             val = ",".join(i.strip() for i in val.split(",") if i.strip())
         if val and val != os.getenv(f.key, ""):
             set_key(env, f.key, val, quote_mode="never")

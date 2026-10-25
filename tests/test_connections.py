@@ -5,7 +5,7 @@ import pytest
 
 from financas import config, connections
 
-PLUGGY, BINANCE = connections.SOURCES
+PLUGGY, PLUGGY2, BINANCE = connections.SOURCES
 
 
 @pytest.fixture

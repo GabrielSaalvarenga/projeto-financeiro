@@ -25,7 +25,7 @@ def _add_months(ym: str, n: int) -> str:
 
 
 def transactions(conn) -> pd.DataFrame:
-    df = pd.read_sql("SELECT t.*, a.institution, a.type AS account_type FROM transactions t "
+    df = pd.read_sql("SELECT t.*, a.institution, a.type AS account_type, a.owner FROM transactions t "
                      "LEFT JOIN accounts a ON a.id = t.account_id", conn, parse_dates=["date"])
     if df.empty:
         return df
@@ -447,7 +447,7 @@ def card_summary(conn) -> list[dict]:
         bills = pd.read_sql("SELECT due_date, total, minimum FROM card_bills WHERE account_id=? ORDER BY due_date",
                             conn, params=(c["id"],))
         out.append({
-            "name": c["name"], "institution": c["institution"], "limit": c["credit_limit"],
+            "name": c["name"], "institution": c["institution"], "owner": c["owner"], "limit": c["credit_limit"],
             "available": c["available_limit"], "used": used, "future_installments": future_total,
             "open_bill_estimate": (used - future_total) if used is not None else None,
             "last_due": c["bill_due_date"], "ahead": future, "open_installments": open_inst, "bills": bills,

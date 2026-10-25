@@ -168,8 +168,16 @@ def session():
 if VIEW:
     st.warning(f"📦 Você está vendo os dados do **{st.session_state['view'].lower()}** — somente leitura.")
 
+OWNER_DEFAULT = "Conta principal"  # contas sem nome de dono, quando há mais de uma conta Pluggy
 with session() as conn:
     df = analytics.transactions(conn)
+    _owners = sorted({r[0] or OWNER_DEFAULT for r in conn.execute("SELECT owner FROM accounts WHERE source='pluggy'")})
+OWNER = None  # filtro "Pessoa": só aparece quando há mais de uma conta Pluggy com dados
+if len(_owners) > 1:
+    _pick = st.sidebar.selectbox("Pessoa / conta", ["Todas"] + _owners, key="owner")
+    OWNER = None if _pick == "Todas" else _pick
+    if OWNER and not df.empty:
+        df = df[df["owner"].fillna(OWNER_DEFAULT) == OWNER]
 
 if "page" not in st.session_state:  # instalação nova (sem conexões nem dados): abre no passo a passo
     from financas import connections
@@ -208,7 +216,9 @@ elif page == "Visão geral":
         hold = analytics.latest_holdings(conn)
         loans = analytics.loan_status(conn)
         hist = analytics.net_worth_history(conn)
-        accts = pd.read_sql("SELECT institution, name, type, balance, balance_date FROM accounts", conn)
+        accts = pd.read_sql("SELECT institution, name, type, balance, balance_date, owner FROM accounts", conn)
+        if OWNER:
+            accts = accts[accts["owner"].fillna(OWNER_DEFAULT) == OWNER]
     sp, inc = analytics.spending(df), analytics.income(df)
     cur = date.today().strftime("%Y-%m")
     c1, c2, c3, c4 = st.columns(4)
@@ -421,11 +431,13 @@ elif page == "Cartão":
     st.title("Cartão de crédito")
     with session() as conn:
         cards = analytics.card_summary(conn)
+    if OWNER:
+        cards = [c for c in cards if (c["owner"] or OWNER_DEFAULT) == OWNER]
     if not cards:
         st.info("Nenhum cartão conectado.")
         st.stop()
     for card in cards:
-        st.subheader(f"{card['institution']} · {card['name']}")
+        st.subheader(f"{card['institution']} · {card['name']}" + (f" · {card['owner']}" if card["owner"] else ""))
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Limite", brl(card["limit"]))
         c2.metric("Usado", brl(card["used"]), help="Limite − disponível. Inclui as parcelas futuras.")
@@ -1403,7 +1415,7 @@ elif page == "Sincronizar":
              f"**Contas** (PDF) em `{config.BILLS_DIR / 'entrada'}` · **OFX** em `data/inbox/ofx` (plano B). "
              "A sincronização sempre usa os **dados atuais** e faz o backup automático quando vence.")
     status = {
-        "Pluggy": bool(config.PLUGGY_CLIENT_ID and config.PLUGGY_ITEM_IDS),
+        "Pluggy": bool(config.PLUGGY_ACCOUNTS),
         "Binance": bool(config.BINANCE_API_KEY),
     }
     st.write(" · ".join(f"{k}: {'✅ configurado' if v else '⚪ falta no .env'}" for k, v in status.items()))
