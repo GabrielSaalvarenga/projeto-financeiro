@@ -121,3 +121,26 @@ def test_sale_installments_auto_baixa():
         # a venda não entra no gráfico de empréstimos
         tl, _ = analytics.loan_timeline(conn)
         assert "Zeca Comprador" not in set(tl.get("person", []))
+
+
+def test_register_sale_from_income():
+    from datetime import date
+    seed()
+    with session() as conn:
+        for i, d in enumerate(["2026-09-09", "2026-10-09"]):
+            conn.execute("INSERT INTO transactions(id, source, date, description, counterparty, amount, category) "
+                         "VALUES (?,?,?,?,?,?,?)",
+                         (f"li{i}", "demo", d, "Pix recebido - Fulano Teste", "Fulano Teste", 472.0, "Pix recebido"))
+        conn.execute("INSERT INTO transactions(id, source, date, description, counterparty, amount, category) "
+                     "VALUES ('li9','demo','2026-06-16','Pix recebido - Fulano Teste','Fulano Teste',806.0,'Pix recebido')")
+        assert analytics.income_person({"counterparty": float("nan"), "description": "Pix recebido - Ana Lima"}) == "Ana Lima"
+        sale_id, n = analytics.register_sale_from_income(conn, "li0", "Projetor", 10, 472.0, date(2026, 9, 9), "Fulano Teste",
+                                                         "Fulano Teste")
+        assert n == 2  # os dois Pix de 472 baixados; o de 806 (valor diferente) fica de fora
+        cats = {r["id"]: r["category"] for r in conn.execute("SELECT id, category FROM transactions WHERE id LIKE 'li%'")}
+        assert cats == {"li0": "Venda recebida", "li1": "Venda recebida", "li9": "Pix recebido"}
+        summ, up = analytics.sales_overview(conn, date(2026, 11, 1))
+        row = summ[summ["id"] == sale_id].iloc[0]
+        assert (row["recebidas"], row["faltam"], row["falta_receber"]) == (2, 8, 3776.0)
+        assert row["ultima"] == date(2027, 6, 9) and row["proxima"] == date(2026, 11, 9)
+        assert up[up["id"] == sale_id]["parcela"].iloc[0] == "3/10"

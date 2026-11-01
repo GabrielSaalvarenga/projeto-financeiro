@@ -193,6 +193,63 @@ def match_sale_payments(conn) -> int:
     return n
 
 
+def income_person(row) -> str:
+    """Nome de quem enviou: contraparte do Pix ou, sem ela, o trecho depois de 'Pix recebido - ' na descrição."""
+    cp = row["counterparty"]
+    cp = cp.strip() if isinstance(cp, str) else ""
+    if cp:
+        return cp.title() if cp.isupper() else cp
+    desc = row["description"] if isinstance(row["description"], str) else ""
+    return desc.split(" - ", 1)[-1].strip()
+
+
+def register_sale_from_income(conn, tx_id: str, item: str, n: int, installment: float, first_due: date,
+                              person: str, pix_name: str | None = None) -> tuple[int, int]:
+    """Transforma uma entrada (ex.: Pix recorrente) numa VENDA parcelada sem juros, no módulo Empréstimos e vendas.
+    Cria a venda + cronograma (n parcelas a partir de `first_due`) e baixa, pelo nome do Pix e pelo valor da parcela,
+    todos os Pix já recebidos (inclusive este), que passam a 'Venda recebida'. Devolve (id da venda, parcelas baixadas)."""
+    if not conn.execute("SELECT 1 FROM transactions WHERE id=?", (tx_id,)).fetchone():
+        raise ValueError("Lançamento não encontrado.")
+    key = (pix_name or person).strip()
+    conn.execute("INSERT OR IGNORE INTO people(name) VALUES (?)", (person,))
+    conn.execute("UPDATE people SET match_name=? WHERE name=? AND COALESCE(match_name,'')=''", (key, person))
+    sched = loans_mod.make_schedule(round(installment * n, 2), 0.0, "mes", "simples", n, first_due, start=first_due)
+    cur = conn.execute("INSERT INTO loans(person, match_name, date, principal, note, rate, rate_period, compounding, kind, item) "
+                       "VALUES (?,?,?,?,?,0,'mes','simples','venda',?)",
+                       (person, key, first_due.isoformat(), round(installment * n, 2),
+                        "Criada a partir de uma entrada recorrente", item.strip()))
+    for due, amt in sched:
+        conn.execute("INSERT INTO loan_schedule(loan_id, due_date, amount) VALUES (?,?,?)", (cur.lastrowid, due.isoformat(), amt))
+    before = conn.execute("SELECT COUNT(*) FROM loan_payments WHERE loan_id=?", (cur.lastrowid,)).fetchone()[0]
+    match_sale_payments(conn)
+    after = conn.execute("SELECT COUNT(*) FROM loan_payments WHERE loan_id=?", (cur.lastrowid,)).fetchone()[0]
+    return cur.lastrowid, after - before
+
+
+def sales_overview(conn, today: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Vendas parceladas: (resumo por venda, parcelas em aberto com data). Resumo: parcelas pagas/faltam, próxima e última data."""
+    today = today or date.today()
+    ls, rs = load_loans(conn)
+    states = loans_mod.replay(ls, rs, today)
+    items = {r["id"]: r["item"] for r in conn.execute("SELECT id, item FROM loans WHERE kind='venda'")}
+    summary, upcoming = [], []
+    for l in ls:
+        if l.kind != "venda" or l.id not in items or not l.schedule:
+            continue
+        rows = loans_mod.open_installments(l.schedule, states[l.id].paid)
+        total = len(rows)
+        left = [(i + 1, d, a, r) for i, (d, a, r) in enumerate(rows) if r > loans_mod.EPS]
+        summary.append({"id": l.id, "produto": items[l.id], "comprador": l.person, "parcelas": total,
+                        "recebidas": total - len(left), "faltam": len(left), "parcela": rows[0][1],
+                        "total": round(sum(a for _, a, _ in rows), 2), "falta_receber": round(sum(r for *_, r in left), 2),
+                        "proxima": left[0][1] if left else None, "ultima": rows[-1][0]})
+        for n_, d, a, r in left:
+            upcoming.append({"id": l.id, "vencimento": d, "produto": items[l.id], "comprador": l.person,
+                             "parcela": f"{n_}/{total}", "valor": r, "atrasada": d < today})
+    cols = ["id", "vencimento", "produto", "comprador", "parcela", "valor", "atrasada"]
+    return pd.DataFrame(summary), pd.DataFrame(upcoming, columns=cols).sort_values("vencimento").reset_index(drop=True)
+
+
 def match_loan_payments(conn) -> int:
     """Casa Pix recebidos com a pessoa pelo trecho de nome (opcional) e baixa os empréstimos dela.
     Pessoa sem nome de Pix cadastrado nunca é casada automaticamente. Vendas casam antes, pelo valor da parcela."""

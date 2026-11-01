@@ -183,7 +183,7 @@ if "page" not in st.session_state:  # instalação nova (sem conexões nem dados
     from financas import connections
     fresh = df.empty and not any(connections.is_configured(s) for s in connections.SOURCES)
     st.session_state["page"] = "Começar" if fresh else "Visão geral"
-page = st.sidebar.radio("Seção", ["Começar", "Visão geral", "Gastos", "Cartão", "Previsão", "Contas de consumo",
+page = st.sidebar.radio("Seção", ["Começar", "Visão geral", "Gastos", "Entradas", "Cartão", "Previsão", "Contas de consumo",
                                   "Empréstimos e vendas", "Carro", "Investimentos", "Sincronizar", "Configurações"], key="page")
 if os.getenv("FIN_ENV_NAME") == "dev":
     st.sidebar.warning("🧪 **DESENVOLVIMENTO** — dados de teste (clone de prod)")
@@ -425,6 +425,118 @@ elif page == "Gastos":
                         delete_rule(conn, rm)
                     st.session_state["fix_msg"] = f"Regra **{rm}** apagada; lançamentos voltaram às regras padrão."
                     st.rerun()
+
+# ------------------------------------------------------------------ Entradas
+elif page == "Entradas":
+    st.title("De onde vem o dinheiro")
+    st.caption("Só o que entrou na conta: salário, mesada, vendas e outras entradas. "
+               "Não conta transferência entre suas contas, resgates nem estornos.")
+    inc = analytics.income(df)
+    if inc.empty:
+        st.info("Nenhuma entrada registrada ainda.")
+        st.stop()
+    months = sorted(inc["month"].unique())
+    sel = st.select_slider("Período", options=months, value=(months[max(0, len(months) - 6)], months[-1]),
+                           format_func=month_name, key="inc_period")
+    win = inc[(inc["month"] >= sel[0]) & (inc["month"] <= sel[1])]
+    n_months = max(1, win["month"].nunique())
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total no período", brl(win["amount"].sum()))
+    c2.metric("Média por mês", brl(win["amount"].sum() / n_months))
+    c3.metric("Lançamentos", len(win))
+
+    st.subheader("Entradas por mês")
+    agg = win.groupby(["month", "category"], as_index=False)["amount"].sum()
+    fig = px.bar(agg, x="month", y="amount", color="category",
+                 labels={"month": "", "amount": "Valor", "category": ""})
+    fig.update_traces(marker_line_width=2, marker_line_color="rgba(0,0,0,0)")
+    st.plotly_chart(style(fig, 360), use_container_width=True)
+
+    st.subheader("Por tipo de entrada")
+    by_cat = win.groupby("category")["amount"].agg(["sum", "count"]).sort_values("sum", ascending=False)
+    by_cat["média/mês"] = by_cat["sum"] / n_months
+    visual.table(by_cat.rename(columns={"sum": "total", "count": "lançamentos"}).reset_index()
+                 .rename(columns={"category": "tipo"}).style.format({"total": brl, "média/mês": brl}),
+                 use_container_width=True, hide_index=True)
+
+    st.subheader("Lançamentos")
+    cats = st.multiselect("Tipos", sorted(win["category"].unique()), key="inc_cats")
+    q = st.text_input("Buscar descrição / quem enviou", key="inc_q")
+    show = win if not cats else win[win["category"].isin(cats)]
+    if q:
+        show = show[(show["description"].fillna("") + " " + show["counterparty"].fillna(""))
+                    .str.contains(q, case=False)]
+    st.caption(f"{len(show)} lançamento(s) · {brl(show['amount'].sum())}")
+    visual.table(show.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)[
+        ["date", "description", "counterparty", "category", "amount", "institution"]]
+        .rename(columns={"date": "data", "description": "descrição", "counterparty": "quem enviou", "category": "tipo",
+                         "amount": "valor", "institution": "banco"})
+        .style.format({"valor": brl, "data": lambda d: d.strftime("%d/%m/%Y")}, na_rep=""),
+        use_container_width=True, hide_index=True)
+
+    # ---- vendas parceladas (ligadas ao módulo Empréstimos e vendas)
+    with session() as conn:
+        sales_sum, sales_up = analytics.sales_overview(conn)
+    st.subheader("Vendas a receber")
+    if sales_sum.empty:
+        st.caption("Nenhuma venda parcelada ainda. Transforme uma entrada recorrente em venda logo abaixo.")
+    else:
+        m1, m2 = st.columns(2)
+        m1.metric("Falta receber de vendas", brl(sales_sum["falta_receber"].sum()))
+        m2.metric("Parcelas por vir", len(sales_up))
+        visual.table(sales_sum.assign(recebidas=lambda d: d["recebidas"].astype(str) + "/" + d["parcelas"].astype(str))
+                     [["produto", "comprador", "recebidas", "faltam", "parcela", "falta_receber", "proxima", "ultima"]]
+                     .rename(columns={"recebidas": "parcelas recebidas", "parcela": "valor da parcela",
+                                      "falta_receber": "falta receber", "proxima": "próxima", "ultima": "termina em"})
+                     .style.format({"valor da parcela": brl, "falta receber": brl,
+                                    "próxima": lambda d: "" if pd.isna(d) else d.strftime("%d/%m/%Y"),
+                                    "termina em": lambda d: d.strftime("%m/%Y")}),
+                     use_container_width=True, hide_index=True)
+        with st.expander(f"Datas das próximas parcelas ({len(sales_up)})"):
+            visual.table(sales_up.drop(columns="id").rename(columns={"valor": "valor a receber"})
+                         .style.format({"valor a receber": brl, "vencimento": lambda d: d.strftime("%d/%m/%Y"),
+                                        "atrasada": lambda v: "sim" if v else ""}),
+                         use_container_width=True, hide_index=True)
+
+    st.subheader("Transformar entrada em venda")
+    st.caption("Para uma entrada que se repete (ex.: alguém pagando um produto seu em parcelas). Cria a venda em "
+               "**Empréstimos e vendas**, dá baixa nos Pix já recebidos desse nome com o mesmo valor e deixa as "
+               "parcelas restantes como a receber, com data.")
+    pickable = show[show["category"] != "Venda recebida"].sort_values("date", ascending=False).head(300)
+    if pickable.empty:
+        st.info("Nenhuma entrada disponível no filtro atual.")
+    else:
+        sel_lab = {f"{r.date:%d/%m/%Y} · {r.description} · {brl(r.amount)}": r for r in pickable.itertuples()}
+        tx = sel_lab[st.selectbox("Entrada", list(sel_lab), key="isv_pick")]
+        who = analytics.income_person({"counterparty": tx.counterparty, "description": tx.description})
+        same = inc[(inc["amount"].round(2) == round(tx.amount, 2)) & (inc["category"] != "Venda recebida")
+                   & (inc["description"].fillna("") + " " + inc["counterparty"].fillna(""))
+                   .map(analytics._norm).str.contains(analytics._norm(who), regex=False)].sort_values("date")
+        k = tx.id
+        a, b = st.columns(2)
+        isv_item = a.text_input("O que foi vendido", key=f"isv_item_{k}", placeholder="ex.: Projetor LG HU70LA")
+        isv_person = b.text_input("Comprador", who, key=f"isv_person_{k}")
+        a, b, c = st.columns(3)
+        isv_n = a.number_input("Nº total de parcelas", min_value=1, step=1, value=10, key=f"isv_n_{k}")
+        isv_amt = b.number_input("Valor da parcela (R$)", min_value=0.0, step=10.0, value=float(tx.amount), key=f"isv_amt_{k}")
+        isv_first = c.date_input("1º vencimento", value=(same["date"].iloc[0] if len(same) else tx.date).date(), key=f"isv_first_{k}",
+                                 help="Padrão: a data do Pix mais antigo com esse nome e valor.")
+        isv_pix = st.text_input("Nome no Pix (para baixar as próximas parcelas sozinho)", who, key=f"isv_pix_{k}")
+        end = (pd.Timestamp(isv_first) + pd.DateOffset(months=int(isv_n) - 1)).date()
+        got = same[same["date"].dt.date >= isv_first]
+        st.info(f"{len(got)} Pix igual(is) já recebido(s) serão baixados · faltam **{max(0, int(isv_n) - len(got))}** "
+                f"parcela(s) de **{brl(isv_amt)}** · última em **{end:%m/%Y}** · total da venda {brl(isv_amt * isv_n)}.".replace("$", "\\$"))
+        if st.button("Criar venda", type="primary", key=f"isv_save_{k}",
+                     disabled=not isv_item.strip() or not isv_person.strip() or isv_amt <= 0):
+            with session() as conn:
+                _, n_paid = analytics.register_sale_from_income(conn, tx.id, isv_item, int(isv_n), isv_amt, isv_first,
+                                                                isv_person.strip(), isv_pix.strip())
+            st.session_state["inc_msg"] = (f"Venda **{isv_item.strip()}** criada: {n_paid} parcela(s) já baixada(s), "
+                                           f"termina em {end:%m/%Y}. Veja em Empréstimos e vendas.")
+            st.rerun()
+    if msg := st.session_state.pop("inc_msg", None):
+        st.success(msg)
 
 # ------------------------------------------------------------------ Cartão
 elif page == "Cartão":

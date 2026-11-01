@@ -3,6 +3,11 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.7.0 — entradas
+- Nova seção **Entradas**: tudo que entrou na conta (salário, mesada, vendas, outras), com gráfico por mês, total por tipo e lista de lançamentos com filtro e busca. Não conta transferência entre contas suas, resgates nem reembolsos.
+- Em **Entradas**, *Transformar entrada em venda*: escolha um Pix recorrente, diga o produto e o nº de parcelas; a venda é criada em **Empréstimos e vendas**, os Pix já recebidos são baixados e as parcelas que faltam ficam a receber, com data e mês de término.
+- Em **Entradas**, *Vendas a receber*: parcelas recebidas/faltando, próxima data e quando termina cada venda.
+
 ## 0.6.0 — duas contas Pluggy
 - Dá para conectar **duas contas da Pluggy ao mesmo tempo** (Configurações → Conexões → *Pluggy — conta 2*): serve para marido e mulher, ou para quem criou uma segunda conta de desenvolvedor depois que o teste de 15 dias da primeira acabou.
 - Os dados aparecem juntos; com mais de uma conta, a barra lateral ganha o filtro **Pessoa / conta** (gastos, cartões e saldos).
