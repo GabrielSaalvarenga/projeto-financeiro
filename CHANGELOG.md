@@ -3,6 +3,11 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.8.0 — gráfico clicável e Pix no crédito
+- No gráfico **Gasto mensal por categoria** (Gastos), clicar numa cor mostra logo abaixo os lançamentos daquela categoria (do mês clicado ou do período todo), com total.
+- O texto ao passar o mouse nas barras agora mostra o **nome da categoria** na caixa lateral, com o mês e o valor.
+- **Pix pago no crédito não conta mais em dobro**: a linha da fatura ("PIX CRED A VISTA…") vira a categoria *Pix no crédito (duplicado)*, que fica fora dos gastos, e vale só o Pix que saiu na conta. Os juros do Pix no crédito continuam contando como gasto. Depois de atualizar, use **Recategorizar** para aplicar nos lançamentos antigos.
+
 ## 0.7.0 — entradas
 - Nova seção **Entradas**: tudo que entrou na conta (salário, mesada, vendas, outras), com gráfico por mês, total por tipo e lista de lançamentos com filtro e busca. Não conta transferência entre contas suas, resgates nem reembolsos.
 - Em **Entradas**, *Transformar entrada em venda*: escolha um Pix recorrente, diga o produto e o nº de parcelas; a venda é criada em **Empréstimos e vendas**, os Pix já recebidos são baixados e as parcelas que faltam ficam a receber, com data e mês de término.

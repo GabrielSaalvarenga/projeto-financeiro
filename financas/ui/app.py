@@ -277,10 +277,32 @@ elif page == "Gastos":
 
     st.subheader("Gasto mensal por categoria")
     agg = folded.groupby(["month", "category"], as_index=False)["value"].sum()
+    agg["mes_txt"] = agg["month"].map(month_name)
+    agg["valor_txt"] = agg["value"].map(brl)
     fig = px.bar(agg, x="month", y="value", color="category", color_discrete_map=cmap,
-                 category_orders={"category": list(cmap)}, labels={"month": "", "value": "Valor", "category": ""})
-    fig.update_traces(marker_line_width=2, marker_line_color="rgba(0,0,0,0)")
-    st.plotly_chart(style(fig, 380), use_container_width=True)
+                 category_orders={"category": list(cmap)}, labels={"month": "", "value": "Valor", "category": ""},
+                 custom_data=["mes_txt", "valor_txt"])
+    # caixa lateral do tooltip = nome da categoria; mês e valor ficam no texto principal
+    fig.update_traces(marker_line_width=2, marker_line_color="rgba(0,0,0,0)",
+                      hovertemplate="%{customdata[0]}<br>%{customdata[1]}<extra>%{fullData.name}</extra>")
+    ev = st.plotly_chart(style(fig, 380), use_container_width=True, on_select="rerun",
+                         selection_mode="points", key="gasto_mensal_cat")
+    pts = (ev.selection.points if ev and ev.selection else []) or []
+    if pts:  # clique numa cor: mostra os lançamentos daquela categoria
+        p = pts[0]
+        cat = fig.data[p["curve_number"]].name
+        mes = str(p.get("x"))
+        st.markdown(f"**{cat}** — clique em outra cor para trocar; clique fora das barras para fechar.")
+        escopo = st.radio("Mostrar", [f"Só {month_name(mes)}", "Período todo"], horizontal=True, key="gasto_cat_escopo")
+        det = folded[folded["category"] == cat]
+        if escopo != "Período todo":
+            det = det[det["month"] == mes]
+        det = det.fillna({"counterparty": "", "description": ""}).sort_values("date", ascending=False)
+        visual.table(det[["date", "description", "counterparty", "product", "tag", "value", "institution"]]
+                     .rename(columns={"tag": "subdivisão", "product": "produto"})
+                     .style.format({"value": brl, "date": lambda d: d.strftime("%d/%m/%Y")}, na_rep=""),
+                     use_container_width=True, hide_index=True)
+        st.caption(f"{len(det)} lançamento(s) · total {brl(det['value'].sum())}")
 
     left, right = st.columns([1, 1])
     with left:

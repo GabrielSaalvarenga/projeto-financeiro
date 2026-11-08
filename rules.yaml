@@ -9,6 +9,7 @@ nao_gasto:
   - Investimento
   - Empréstimo concedido
   - Empréstimo recebido
+  - Pix no crédito (duplicado)   # a linha da fatura repete o Pix que já saiu na conta
 
 # Contas cujo movimento é só dinheiro seu circulando entre contas/investimentos (pela instituição).
 # Tudo que acontece nelas vira esta categoria (fora de gastos e renda). Correção manual ainda vence.
@@ -21,6 +22,8 @@ por_banco:
   "33264668": Investimento   # Banco XP — aportes e resgates na XP
 
 regras:
+  # Pix pago no crédito aparece 2x: na conta (Pix enviado) e na fatura (PIX CRED A VISTA). Conta só o da conta.
+  - {match: "^pix cred a vista", categoria: "Pix no crédito (duplicado)"}
   - {match: "pagamento.*fatura|pgto fatura|fatura cart|pagto debito automatico|pagamento on ?line", categoria: Pagamento de fatura}
   - {match: "salario|salário|folha|proventos|pagto salario", categoria: Salário}
   - {match: "cemig", categoria: Energia (Cemig)}
