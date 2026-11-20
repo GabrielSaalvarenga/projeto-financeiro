@@ -26,7 +26,8 @@ def test_save_writes_only_filled_fields_and_protects_file(env_file):
     text = env_file.read_text(encoding="utf-8")
     assert "# comentário que deve continuar" in text and "OUTRA=1" in text
     assert "BINANCE_API_KEY=antiga" in text and "BINANCE_API_SECRET=nova-secreta" in text
-    assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
+    if os.name != "nt":  # no Windows não há permissão 600: a proteção é a pasta do usuário (%APPDATA%)
+        assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
     assert config.BINANCE_API_SECRET == "nova-secreta"  # vale na hora, sem reiniciar
 
 
