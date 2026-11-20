@@ -1,0 +1,275 @@
+{
+ "a_receber_por_tipo": {
+  "emprestimo": 3280.32,
+  "venda": 1200.0
+ },
+ "a_receber_total": 4480.32,
+ "carro": {
+  "depr_month": 310.0,
+  "fipe_now": 70790.0,
+  "fixed_month": 478.33,
+  "fuel_per_km": 0.5,
+  "km_l": 12.39,
+  "km_to_service": 8150.0,
+  "maint_per_km": 0.13,
+  "profile": "{'id': 1, 'brand': 'Volkswagen', 'model': 'Polo', 'year': 2022, 'km_now': 41850.0, 'km_now_date': '2026-11-14', 'next_service_km': 50000.0, 'next_service_price': 980.0}",
+  "service_interval": 9796.0,
+  "service_per_km": 0.1
+ },
+ "cartoes": [
+  {
+   "fatura_aberta": 2040.85,
+   "nome": "Cartão Mastercard",
+   "parcelas_futuras": 1079.6,
+   "usado": 3120.45
+  }
+ ],
+ "data": "2026-11-14",
+ "divida_banco_falta": 11602.5,
+ "em_atraso_por_tipo": {
+  "emprestimo": 1093.44,
+  "venda": 0.0
+ },
+ "entradas_por_mes": {
+  "2025-12": 10000.0,
+  "2026-01": 10163.21,
+  "2026-02": 10000.0,
+  "2026-03": 10000.0,
+  "2026-04": 10000.0,
+  "2026-05": 10099.46,
+  "2026-06": 10450.0,
+  "2026-07": 10450.0,
+  "2026-08": 10450.0,
+  "2026-09": 10965.09,
+  "2026-10": 11180.0,
+  "2026-11": 10450.0
+ },
+ "gasto_media_3m_mesmo_periodo": 5880.79,
+ "gasto_mes_ate_hoje": 4259.78,
+ "gasto_mes_por_categoria": {
+  "Alimentação fora": 116.76,
+  "Assinaturas": 77.8,
+  "Carro - Combustível": 225.28,
+  "Compra de produtos": 149.9,
+  "Compras online": 227.64,
+  "Lazer": 206.35,
+  "Moradia": 2803.5,
+  "Saúde": 322.65,
+  "Telefone/Internet": 129.9
+ },
+ "gasto_por_mes": {
+  "2025-12": 4851.87,
+  "2026-01": 5574.3,
+  "2026-02": 5365.72,
+  "2026-03": 5934.75,
+  "2026-04": 6605.77,
+  "2026-05": 5303.55,
+  "2026-06": 6945.17,
+  "2026-07": 6486.09,
+  "2026-08": 9973.05,
+  "2026-09": 6892.99,
+  "2026-10": 6896.05,
+  "2026-11": 4259.78
+ },
+ "investimentos": 60523.19,
+ "investimentos_por_fonte": {
+  "binance": 11676.42,
+  "inter": 11957.46,
+  "xp": 36889.31
+ },
+ "parcelas_a_receber": [
+  [
+   "Renato (exemplo)",
+   "2026-11-10",
+   1093.44
+  ],
+  [
+   "Renato (exemplo)",
+   "2026-12-10",
+   1093.44
+  ],
+  [
+   "Renato (exemplo)",
+   "2027-01-10",
+   1093.44
+  ],
+  [
+   "Marina (exemplo)",
+   "2026-11-15",
+   300.0
+  ],
+  [
+   "Marina (exemplo)",
+   "2026-12-15",
+   300.0
+  ],
+  [
+   "Marina (exemplo)",
+   "2027-01-15",
+   300.0
+  ],
+  [
+   "Marina (exemplo)",
+   "2027-02-15",
+   300.0
+  ]
+ ],
+ "parcelas_banco": [
+  [
+   "Banco Exemplo",
+   "2027-01-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-02-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-03-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-04-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-05-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-06-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-07-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-08-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-09-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-10-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-11-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2027-12-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2028-01-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2028-02-05",
+   773.5
+  ],
+  [
+   "Banco Exemplo",
+   "2028-03-05",
+   773.5
+  ]
+ ],
+ "previsao": [
+  {
+   "A receber (empréstimos)": 1393.44,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 245.69,
+   "Empréstimo (banco)": 0.0,
+   "Parcelas cartão": 539.8,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 5914.87,
+   "Salário": 9850.0,
+   "Saídas previstas": 6878.58,
+   "Variáveis (média)": 2231.3,
+   "month": "2026-12"
+  },
+  {
+   "A receber (empréstimos)": 1393.44,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 314.91,
+   "Empréstimo (banco)": 773.5,
+   "Parcelas cartão": 539.8,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 5072.15,
+   "Salário": 9850.0,
+   "Saídas previstas": 7721.3,
+   "Variáveis (média)": 2231.3,
+   "month": "2027-01"
+  },
+  {
+   "A receber (empréstimos)": 300.0,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 293.53,
+   "Empréstimo (banco)": 773.5,
+   "Parcelas cartão": 0.0,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 4539.88,
+   "Salário": 9850.0,
+   "Saídas previstas": 7160.12,
+   "Variáveis (média)": 2231.3,
+   "month": "2027-02"
+  },
+  {
+   "A receber (empréstimos)": 0.0,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 312.71,
+   "Empréstimo (banco)": 773.5,
+   "Parcelas cartão": 0.0,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 4220.7,
+   "Salário": 9850.0,
+   "Saídas previstas": 7179.3,
+   "Variáveis (média)": 2231.3,
+   "month": "2027-03"
+  },
+  {
+   "A receber (empréstimos)": 0.0,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 288.7,
+   "Empréstimo (banco)": 773.5,
+   "Parcelas cartão": 0.0,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 4244.72,
+   "Salário": 9850.0,
+   "Saídas previstas": 7155.28,
+   "Variáveis (média)": 2231.3,
+   "month": "2027-04"
+  },
+  {
+   "A receber (empréstimos)": 0.0,
+   "Benefícios (Flash)": 1550.0,
+   "Cemig + Cesama": 302.67,
+   "Empréstimo (banco)": 773.5,
+   "Parcelas cartão": 0.0,
+   "Recorrentes": 3861.78,
+   "Saldo previsto": 4230.74,
+   "Salário": 9850.0,
+   "Saídas previstas": 7169.26,
+   "Variáveis (média)": 2231.3,
+   "month": "2027-05"
+  }
+ ],
+ "saldo_em_conta": 7162.3
+}

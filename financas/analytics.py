@@ -24,11 +24,21 @@ def _add_months(ym: str, n: int) -> str:
     return (pd.Period(ym, "M") + n).strftime("%Y-%m")
 
 
+def _tail4(v) -> str:
+    """Os 4 últimos dígitos, e só eles; vazio se a origem não informou pelo menos 4."""
+    digits = "".join(ch for ch in str(v or "") if ch.isdigit())
+    return digits[-4:] if len(digits) >= 4 else ""
+
+
 def transactions(conn) -> pd.DataFrame:
-    df = pd.read_sql("SELECT t.*, a.institution, a.type AS account_type, a.owner FROM transactions t "
+    # card_tail: só os 4 últimos dígitos do cartão usado, lidos do registro bruto da origem (nada novo é gravado)
+    df = pd.read_sql("SELECT t.*, a.institution, a.type AS account_type, a.name AS account_name, a.owner, "
+                     "CASE WHEN json_valid(t.raw) THEN json_extract(t.raw, '$.creditCardMetadata.cardNumber') END "
+                     "AS card_tail FROM transactions t "
                      "LEFT JOIN accounts a ON a.id = t.account_id", conn, parse_dates=["date"])
     if df.empty:
         return df
+    df["card_tail"] = df["card_tail"].map(_tail4)
     df["month"] = df["date"].dt.strftime("%Y-%m")
     df["is_flow"] = ~df["category"].isin(non_spending())
     return df
@@ -377,6 +387,119 @@ def loan_timeline(conn, asof: date | None = None) -> tuple[pd.DataFrame, pd.Data
         totals.append({"month": month, "emprestado": sum(l.principal for l in ls if l.date <= d),
                        "recebido": round(sum(states[l.id].paid for l in ls if l.date <= d), 2)})
     return pd.DataFrame(by_person), pd.DataFrame(totals)
+
+
+def loan_results(conn, today: date | None = None) -> pd.DataFrame:
+    """Resultado de cada empréstimo com juros a pessoas: juros recebidos x previstos e pontualidade. Só leitura.
+    Juros previstos = recebido + falta − emprestado (o mesmo "juros" da tabela de empréstimos)."""
+    today = today or date.today()
+    ls, rs = load_loans(conn)
+    states = loans_mod.replay(ls, rs, today)
+    rows = []
+    for l in ls:
+        if l.kind != "emprestimo":
+            continue
+        st = states[l.id]
+        remaining = 0.0 if l.closed else st.balance()
+        expected = round(st.paid + remaining - l.principal, 2)
+        punct = loans_mod.punctuality(l.schedule, st.allocs, today) if l.schedule else []
+        due = [p for p in punct if p[0] < today]
+        done = remaining <= loans_mod.EPS
+        rate = loans_mod.realized_monthly_rate(l.principal, l.date, st.allocs) if done else None
+        rows.append({"id": l.id, "person": l.person, "date": l.date, "principal": l.principal,
+                     "paid": round(st.paid, 2), "remaining": round(remaining, 2), "scheduled": bool(l.schedule),
+                     "interest_expected": expected, "interest_received": min(loans_mod.interest_received(st), max(expected, 0.0)),
+                     "due_count": len(due), "on_time": sum(1 for p in due if p[2] and p[3] == 0),
+                     "late_paid": sum(1 for p in due if p[2] and p[3] > 0), "late_open": sum(1 for p in due if not p[2]),
+                     "late_days": sum(p[3] for p in due), "done": done, "realized_rate": rate,
+                     "agreed_rate": loans_mod.monthly_rate(l.rate, l.period, l.compounding)})
+    return pd.DataFrame(rows)
+
+
+def _name_tokens(name: str) -> list[str]:
+    """Palavras do nome cadastrado (sem o que está entre parênteses), para comparar com o nome que vem no Pix."""
+    import re
+    return [t for t in _norm(re.sub(r"\(.*?\)", " ", name or "")).split() if len(t) >= 3]
+
+
+def loan_pix_queue(conn, today: date | None = None) -> list[dict]:
+    """Pix recebidos que PODEM ser pagamento de quem me deve e não foram baixados sozinhos. Só sugere; nada é gravado.
+    Entra na fila: (a) Pix com o nome de Pix cadastrado da pessoa que não casou (ex.: venda com valor diferente da
+    parcela); (b) Pix cujo remetente tem todas as palavras do nome cadastrado, para quem não tem nome de Pix."""
+    status = loan_status(conn, today)
+    if status.empty:
+        return []
+    open_ = status[(status["closed"] == 0) & (status["remaining"] > loans_mod.EPS)]
+    if open_.empty:
+        return []
+    ignored = {x for x in (conn.execute("SELECT value FROM settings WHERE key='loan_pix_ignored'").fetchone() or [""])[0]
+               .split(",") if x}
+    keys: dict[str, set[str]] = {}
+    for r in conn.execute("SELECT name, match_name FROM people"):
+        keys.setdefault(r["name"], set()).add(_norm(r["match_name"] or ""))
+    for r in conn.execute("SELECT person, match_name FROM loans WHERE closed=0"):
+        keys.setdefault(r["person"], set()).add(_norm(r["match_name"] or ""))
+    out, seen = [], set()
+    for person, mine in open_.groupby("person"):
+        strong = {k for k in keys.get(person, set()) if k}
+        tokens = _name_tokens(person)
+        since = str(mine["date"].min())[:10]
+        cands = conn.execute(
+            """SELECT id, date, amount, description, counterparty FROM transactions
+               WHERE amount > 0 AND date >= ? AND id NOT IN (SELECT transaction_id FROM loan_payments
+               WHERE transaction_id IS NOT NULL) ORDER BY date DESC""", (since,)).fetchall()
+        targets = [{"id": int(r.id), "kind": r.kind, "remaining": float(r.remaining),
+                    "label": (f"Venda: {r.item or 'sem descrição'}" if r.kind == "venda" else
+                              f"Empréstimo de {str(r.date)[:10]}")} for r in mine.sort_values("date").itertuples()]
+        for t in cands:
+            if t["id"] in ignored or t["id"] in seen:
+                continue
+            text = _norm(f"{t['counterparty'] or ''} {t['description'] or ''}")
+            if any(k in text for k in strong):
+                why = "tem o nome de Pix cadastrado, mas o valor não bateu com uma parcela"
+            elif tokens and all(tok in text.split() for tok in tokens):
+                why = "o nome de quem enviou parece com o cadastro"
+            else:
+                continue
+            seen.add(t["id"])
+            out.append({"tx_id": t["id"], "date": _d(t["date"]), "amount": float(t["amount"]),
+                        "from": (t["counterparty"] or t["description"] or "").strip(), "person": person, "why": why,
+                        "targets": targets})
+    return sorted(out, key=lambda x: x["date"], reverse=True)
+
+
+def confirm_loan_pix(conn, tx_id: str, loan_id: int) -> None:
+    """Registra (baixa interna) um Pix já recebido como pagamento, do mesmo jeito que o casamento automático faz."""
+    t = conn.execute("SELECT id, date, amount FROM transactions WHERE id=? AND amount > 0", (tx_id,)).fetchone()
+    loan = conn.execute("SELECT id, kind FROM loans WHERE id=?", (loan_id,)).fetchone()
+    if t is None or loan is None:
+        raise ValueError("Lançamento ou empréstimo não encontrado.")
+    sale = loan["kind"] == "venda"
+    conn.execute("INSERT INTO loan_payments(loan_id, date, amount, transaction_id, note, directed, order_mode) "
+                 "VALUES (?,?,?,?,?,?,'antigas')",
+                 (loan_id, t["date"], t["amount"], t["id"], "Pix confirmado na fila de conferência", int(sale)))
+    cat = "Venda recebida" if sale else "Empréstimo recebido"
+    conn.execute("UPDATE transactions SET category=?, manual_category=? WHERE id=?", (cat, cat, t["id"]))
+
+
+def ignore_loan_pix(conn, tx_id: str) -> None:
+    """Tira um Pix da fila de conferência (guarda só o id do lançamento nas preferências)."""
+    row = conn.execute("SELECT value FROM settings WHERE key='loan_pix_ignored'").fetchone()
+    ids = [x for x in (row[0] if row else "").split(",") if x]
+    if tx_id not in ids:
+        ids.append(tx_id)
+    conn.execute("INSERT INTO settings(key, value) VALUES ('loan_pix_ignored', ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (",".join(ids),))
+
+
+def ignored_loan_pix(conn) -> list[str]:
+    row = conn.execute("SELECT value FROM settings WHERE key='loan_pix_ignored'").fetchone()
+    return [x for x in (row[0] if row else "").split(",") if x]
+
+
+def restore_ignored_loan_pix(conn) -> None:
+    """Devolve à fila de conferência os Pix que tinham sido ignorados."""
+    conn.execute("UPDATE settings SET value='' WHERE key='loan_pix_ignored'")
 
 
 # ---------- Empréstimos que eu devo (banco) ----------

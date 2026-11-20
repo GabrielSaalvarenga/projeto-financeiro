@@ -6,3 +6,7 @@ data-teste
 __pycache__
 .pytest_cache
 dados/
+build
+dist
+empacotar
+.github

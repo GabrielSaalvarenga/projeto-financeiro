@@ -11,7 +11,7 @@ PLUGGY, PLUGGY2, BINANCE = connections.SOURCES
 @pytest.fixture
 def env_file(tmp_path, monkeypatch):
     f = tmp_path / ".env"
-    f.write_text("# comentário que deve continuar\nOUTRA=1\nBINANCE_API_KEY=antiga\n")
+    f.write_text("# comentário que deve continuar\nOUTRA=1\nBINANCE_API_KEY=antiga\n", encoding="utf-8")
     monkeypatch.setattr(config, "ENV_FILE", f)
     for k in config.CONNECTION_KEYS:
         monkeypatch.delenv(k, raising=False)
@@ -23,10 +23,11 @@ def env_file(tmp_path, monkeypatch):
 def test_save_writes_only_filled_fields_and_protects_file(env_file):
     changed = connections.save(BINANCE, {"BINANCE_API_KEY": "", "BINANCE_API_SECRET": " nova-secreta "})
     assert changed == ["BINANCE_API_SECRET"]
-    text = env_file.read_text()
+    text = env_file.read_text(encoding="utf-8")
     assert "# comentário que deve continuar" in text and "OUTRA=1" in text
     assert "BINANCE_API_KEY=antiga" in text and "BINANCE_API_SECRET=nova-secreta" in text
-    assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
+    if os.name != "nt":  # no Windows não há permissão 600: a proteção é a pasta do usuário (%APPDATA%)
+        assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
     assert config.BINANCE_API_SECRET == "nova-secreta"  # vale na hora, sem reiniciar
 
 

@@ -3,6 +3,25 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.10.0 — app para Mac e Windows
+- O painel agora tem **app de verdade**: `.dmg` para Mac (Apple Silicon) e instalador `.exe` para Windows, na página de Releases. Não precisa de Python, Docker nem navegador: abre numa janela própria e fecha junto com ela.
+- O README tem **links de download direto** ("Baixar para Windows" / "Baixar para Mac") que baixam sempre a versão mais nova com um clique.
+- No app, os dados ficam na pasta do usuário (Mac: `~/Library/Application Support/Painel Financeiro`; Windows: `%APPDATA%\Painel Financeiro`), então atualizar ou desinstalar não apaga nada. Quem já usava pelo Python ou Docker copia a pasta de dados e o `.env` para lá (ver README).
+- O app não é assinado pela Apple nem pela Microsoft: na primeira abertura o sistema avisa (o README explica como liberar).
+- Os jeitos antigos (duplo clique, Python, Docker) continuam funcionando como antes.
+- Novo **registro de erros** (`erros.log` na pasta de dados), em qualquer jeito de rodar: guarda com data e detalhe técnico os erros das telas e das sincronizações (Pluggy, Binance, OFX, backup), para investigar falhas que acontecem de vez em quando. Tem tamanho limitado e não sai do computador.
+- Windows: arquivos com acento (tema, avisos das contas para revisar) passam a ser lidos e gravados em UTF-8.
+- Windows: a janela do app não fica mais em branco. O servidor do painel travava ao carregar o pandas/numpy porque vigiava a janela com uma leitura presa no stdin; agora só espia o pipe.
+
+## 0.9.0 — visual novo e telas reorganizadas
+- **Menu agrupado** (Dia a dia, Compromissos, Patrimônio, Painel) e **um endereço por tela** (`?tela=gastos`): recarregar mantém a tela e dá para favoritar.
+- **Um número em destaque por tela**, com o seletor de período dentro do bloco: gasto do mês (Visão geral, Gastos), entradas, fatura aberta, sobra prevista, conta do mês e custo por mês do carro (soma de fixos, depreciação e média de combustível; não inclui manutenção).
+- **Visão geral:** bloco "Hoje" (saldo, investimentos, a receber com atraso, fatura, dívida), agenda única de recebimentos e vencimentos e **Pendências** (Pix a conferir, gastos sem categoria, contas vencidas sem pagamento, PDFs para revisar, dados desatualizados).
+- **Extrato por dia** em Gastos e Entradas, com a seta que abre o lançamento e a correção ali mesmo; mostra por onde passou (cartão ou conta, com o **final do cartão**, só os 4 últimos dígitos).
+- **Listas no lugar das tabelas**, botão **Colunas** para escolher os campos e fichas no celular, sem rolagem lateral.
+- **Empréstimos e vendas:** "Quem me deve" com **Dar baixa** na linha, **Ficha por pessoa**, fila de **Pix a conferir** (confirmar ou ignorar), simulador, resultado por empréstimo (juros recebidos, pontualidade) e cadastros em passos com resumo ao lado.
+- Sem emojis, ícones no menu, datas em dia/mês/ano, números no padrão brasileiro e tema claro/escuro revisados. Nenhuma tabela nova no banco.
+
 ## 0.8.0 — gráfico clicável e Pix no crédito
 - No gráfico **Gasto mensal por categoria** (Gastos), clicar numa cor mostra logo abaixo os lançamentos daquela categoria (do mês clicado ou do período todo), com total.
 - O texto ao passar o mouse nas barras agora mostra o **nome da categoria** na caixa lateral, com o mês e o valor.

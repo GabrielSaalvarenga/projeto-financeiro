@@ -10,6 +10,7 @@ os ids dos items conectados.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, timedelta
 
 import requests
@@ -82,6 +83,7 @@ def sync_all(conn, days: int = 365) -> list[tuple[str, bool, str]]:
         try:
             report.append((name, True, sync(conn, days, acc)))
         except Exception as e:  # noqa: BLE001
+            logging.getLogger("financas.pluggy").exception("Falha ao sincronizar %s", name)
             log_sync(conn, "pluggy", False, f"{name}: {e}")
             report.append((name, False, str(e)))
         conn.commit()

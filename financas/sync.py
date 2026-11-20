@@ -1,6 +1,7 @@
 """Orquestra todas as coletas. Cada fonte falha sozinha sem derrubar as outras."""
 from __future__ import annotations
 
+import logging
 import shutil
 
 from . import analytics, backup, config
@@ -8,6 +9,8 @@ from .categorize import propagate_installment_tags, recategorize
 from .connectors import binance, pluggy
 from .db import log_sync, session
 from .importers import bills_folder, ofx
+
+LOG = logging.getLogger("financas.sync")
 
 
 def run_all() -> list[tuple[str, bool, str]]:
@@ -17,6 +20,7 @@ def run_all() -> list[tuple[str, bool, str]]:
             try:
                 report.extend(fn(conn))
             except Exception as e:  # noqa: BLE001 — registrar e seguir
+                LOG.exception("Falha ao sincronizar %s", name)
                 log_sync(conn, name, False, str(e))
                 report.append((name, False, str(e)))
             conn.commit()
@@ -30,6 +34,7 @@ def run_all() -> list[tuple[str, bool, str]]:
                 shutil.move(str(f), done / f.name)
                 report.append(("ofx", True, f"{f.name}: {n}"))
             except Exception as e:  # noqa: BLE001
+                LOG.exception("Falha ao importar o OFX %s", f.name)
                 report.append(("ofx", False, f"{f.name}: {e}"))
 
         for r in bills_folder.import_folder(conn, config.BILLS_DIR):
@@ -45,5 +50,6 @@ def run_all() -> list[tuple[str, bool, str]]:
         if made:
             report.append(("backup", True, made.name))
     except Exception as e:  # noqa: BLE001
+        LOG.exception("Falha no backup automático")
         report.append(("backup", False, str(e)))
     return report

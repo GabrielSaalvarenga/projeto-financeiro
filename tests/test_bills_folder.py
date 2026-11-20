@@ -27,7 +27,7 @@ def test_unreadable_pdf_goes_to_review():
     with session() as conn:
         (r,) = bills_folder.import_folder(conn, base, min_age=0)
     assert not r["ok"] and not any((base / "entrada").iterdir())
-    assert (base / "revisar" / "foto.pdf").exists() and "não consegui abrir" in (base / "revisar" / "foto.txt").read_text()
+    assert (base / "revisar" / "foto.pdf").exists() and "não consegui abrir" in (base / "revisar" / "foto.txt").read_text(encoding="utf-8")
 
 
 def test_recent_file_waits_for_sync():

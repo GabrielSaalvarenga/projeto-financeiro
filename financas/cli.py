@@ -8,6 +8,8 @@ from .db import session
 
 
 def main(argv: list[str]) -> int:
+    from . import logs
+    logs.setup()
     cmd = argv[0] if argv else "sync"
     if cmd == "sync":
         from .sync import run_all

@@ -41,7 +41,7 @@ def cemig_bill(path: Path) -> dict:
 
 def import_cesama_json(conn, path: Path) -> list[dict]:
     """JSON salvo da agência virtual da Cesama: faturas pagas + leituras do hidrômetro."""
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     reads = {r["ref"]: r for r in data.get("leituras", [])}
     out = []
     for f in data.get("faturas", []):

@@ -206,3 +206,54 @@ def solve_rate(loans: list[Loan], receipts: list[Receipt], loan_id: int, when: d
         mid = (lo + hi) / 2
         lo, hi = (mid, hi) if bal(mid) < amount else (lo, mid)
     return (lo + hi) / 2
+
+
+# ---------------------------------------------------------------- resultado de um empréstimo (só leitura)
+
+def punctuality(schedule: list[tuple[date, float]], allocs: list[tuple[date, float]],
+                asof: date) -> list[tuple[date, float, date | None, int]]:
+    """Para cada parcela: (vencimento, valor, dia em que ficou coberta ou None, dias de atraso).
+    Os recebimentos cobrem as parcelas mais antigas primeiro. Parcela ainda aberta e vencida conta atraso até `asof`."""
+    out, got, need = [], sorted(allocs), 0.0
+    for due, amt in sorted(schedule):
+        need += amt
+        acc, covered = 0.0, None
+        for when, val in got:
+            acc += val
+            if acc >= need - EPS:
+                covered = when
+                break
+        late = (covered - due).days if covered else ((asof - due).days if due < asof else 0)
+        out.append((due, amt, covered, max(late, 0)))
+    return out
+
+
+def interest_received(state: _State) -> float:
+    """Quanto do que já foi recebido é juro.
+    Parcelado: cada parcela é total ÷ n, então o juro vem na mesma proporção em todas (juros totais ÷ total).
+    Sem data combinada: o recebimento paga primeiro os juros; juro recebido = recebido − principal devolvido."""
+    loan = state.loan
+    if state.scheduled:
+        total = sum(a for _, a in loan.schedule)
+        return round(state.paid * (total - loan.principal) / total, 2) if total > 0 else 0.0
+    return round(max(state.paid - (loan.principal - state.princ), 0.0), 2)
+
+
+def realized_monthly_rate(principal: float, start: date, flows: list[tuple[date, float]]) -> float | None:
+    """Taxa composta ao mês que iguala o emprestado ao que foi recebido, nas datas reais. None se não há o que medir."""
+    if principal <= 0 or not flows:
+        return None
+
+    def npv(i: float) -> float:
+        return sum(v / (1 + i) ** months_between(start, d) for d, v in flows) - principal
+
+    lo_, hi = -0.95, 1.0
+    if npv(lo_) < 0 or npv(hi) > 0:
+        return None
+    for _ in range(80):
+        mid = (lo_ + hi) / 2
+        if npv(mid) > 0:
+            lo_ = mid
+        else:
+            hi = mid
+    return (lo_ + hi) / 2

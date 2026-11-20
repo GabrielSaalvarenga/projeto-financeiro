@@ -50,7 +50,47 @@ Estou disponibilizando porque pode ser útil para mais gente. Algumas coisas par
 
 ## Como instalar
 
-Escolha o jeito mais fácil (duplo clique) ou **um** dos dois caminhos. Em ambos você começa baixando o projeto.
+### O mais fácil: baixar o app (Mac ou Windows)
+
+Não precisa de Python, Docker nem terminal. Clique no link do seu computador: o download da versão mais nova
+começa na hora.
+
+- **[⬇️ Baixar para Windows (10/11)](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest/download/PainelFinanceiro-Windows-Instalador.exe)**
+- **[⬇️ Baixar para Mac (Apple Silicon: M1, M2, M3…)](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest/download/PainelFinanceiro-Mac.dmg)**
+
+Os mesmos arquivos (e as versões anteriores) ficam na página
+**[Releases](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest)**, em *Assets*.
+
+| Sistema | Arquivo | Como instalar |
+|---|---|---|
+| **Mac** (Apple Silicon: M1, M2, M3…) | `PainelFinanceiro-Mac.dmg` | Abra o `.dmg` e arraste o **Painel Financeiro** para **Aplicativos**. Na primeira vez, o Mac bloqueia (o app não é assinado pela Apple): abra **Ajustes do Sistema → Privacidade e Segurança**, role até o aviso do Painel Financeiro e clique em **Abrir Mesmo Assim**. |
+| **Windows** 10/11 | `PainelFinanceiro-Windows-Instalador.exe` | Dê dois cliques. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**. Não pede senha de administrador; cria o atalho no Menu Iniciar. |
+
+O painel abre numa janela própria. Para fechar, feche a janela. **Seus dados ficam fora do app**, então
+atualizar ou desinstalar não apaga nada:
+
+- Mac: `~/Library/Application Support/Painel Financeiro` (no Finder: *Ir → Ir para a Pasta…* e cole o caminho)
+- Windows: `%APPDATA%\Painel Financeiro` (cole na barra de endereço do Explorador; também há um atalho
+  *Pasta dos meus dados* no Menu Iniciar)
+
+**Já usava o painel pelo Python ou pelo Docker?** Feche o painel antigo e copie o conteúdo da pasta `data/`
+(ou `dados/`, no Docker) para a pasta acima, junto com o arquivo `.env` das chaves (fica na pasta do projeto;
+no Docker ele já está dentro de `dados/`). Depois abra o app.
+
+**Atualizar:** quando a barra lateral avisar de versão nova, baixe o arquivo novo e instale por cima.
+
+> Mac com processador Intel: por enquanto não há app pronto; use o duplo clique (`Iniciar.command`) abaixo.
+> Se o app não abrir, os detalhes do erro ficam no arquivo `painel.log` dentro da pasta de dados
+> (`painel.anterior.log` é o da vez anterior).
+
+**Deu erro de vez em quando?** Em qualquer jeito de rodar (app, Python ou Docker), os erros das telas e das
+sincronizações ficam em `erros.log`, na pasta de dados, com data e detalhe técnico. São até 5 arquivos de 1 MB,
+e o mais antigo é apagado sozinho. O arquivo fica só no seu computador. Antes de mandar para alguém, dê uma
+olhada: ele pode ter nomes de lojas ou valores.
+
+### Outros jeitos (pelo código)
+
+Escolha o duplo clique ou **um** dos dois caminhos. Em ambos você começa baixando o projeto.
 
 ### Passo 0 — Baixar o projeto
 
@@ -182,6 +222,8 @@ $env:FIN_DATA_DIR="data/demo"; .venv\Scripts\streamlit run financas\ui\app.py
 
 ## Como atualizar para uma versão nova
 
+- **Usa o app (Mac/Windows):** baixe o `.dmg` ou o instalador novo na página de Releases e instale por cima.
+  Os dados ficam onde estão.
 - **Baixou o ZIP:** baixe o ZIP novo e copie para a pasta nova os seus dados (`data/` no duplo clique e no Caminho A,
   `dados/` no Caminho B) e o arquivo `.env`. No duplo clique, a primeira abertura da pasta nova reinstala as dependências.
 - **Usou Git:** `git pull`. No Caminho B, rode também `docker compose -f docker-compose.simples.yml up -d --build`.
@@ -257,6 +299,12 @@ mexer: a aba **Configurações → Conexões** grava o `.env` por você.
   (código de uma tag do Git, dados reais), **dev** (código da pasta, clone dos dados de prod) e **novo**
   (instalação vazia, para testar o primeiro uso).
 - Fonte nova de dados = mais um item em `financas/connections.py` e um conector em `financas/connectors/`.
+- **App de Mac e Windows:** `painel_desktop.py` abre o painel numa janela própria (pywebview) e roda o Streamlit
+  num segundo processo; `empacotar/` tem o `painel.spec` do PyInstaller, o `.dmg` (Mac) e o instalador Inno
+  Setup (Windows). Quem gera é o GitHub Actions (`.github/workflows/app-desktop.yml`): ao publicar uma tag
+  `vX.Y.Z` igual à versão de `financas/__init__.py`, os arquivos vão para a Release. Para gerar no seu Mac:
+  `pip install -r empacotar/requisitos-build.txt`, `pyinstaller --noconfirm empacotar/painel.spec` e
+  `sh empacotar/criar_dmg.sh X.Y.Z`. Para testar sem empacotar: `python painel_desktop.py`.
 - Regra de ouro do projeto: **nenhum código pode pagar, transferir ou movimentar dinheiro.** Só consultas.
 
 ## Licença
