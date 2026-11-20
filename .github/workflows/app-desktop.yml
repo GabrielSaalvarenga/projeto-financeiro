@@ -105,6 +105,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
+          # cópia com nome fixo (sem a versão): o link .../releases/latest/download/<nome> do README
+          # baixa sempre a versão mais nova, com um clique
+          for f in dist/PainelFinanceiro-*-Mac-arm64.dmg; do cp "$f" dist/PainelFinanceiro-Mac.dmg; done
+          for f in dist/PainelFinanceiro-*-Windows-Instalador.exe; do cp "$f" dist/PainelFinanceiro-Windows-Instalador.exe; done
           files=(dist/*.dmg dist/*-Instalador.exe)
           # os dois sistemas rodam juntos: quem chegar primeiro cria a Release, o outro só anexa
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || \

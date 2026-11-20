@@ -52,13 +52,19 @@ Estou disponibilizando porque pode ser útil para mais gente. Algumas coisas par
 
 ### O mais fácil: baixar o app (Mac ou Windows)
 
-Não precisa de Python, Docker nem terminal. Na página **[Releases](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest)**,
-em *Assets*, baixe o arquivo do seu computador:
+Não precisa de Python, Docker nem terminal. Clique no link do seu computador: o download da versão mais nova
+começa na hora.
+
+- **[⬇️ Baixar para Windows (10/11)](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest/download/PainelFinanceiro-Windows-Instalador.exe)**
+- **[⬇️ Baixar para Mac (Apple Silicon: M1, M2, M3…)](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest/download/PainelFinanceiro-Mac.dmg)**
+
+Os mesmos arquivos (e as versões anteriores) ficam na página
+**[Releases](https://github.com/GabrielSaalvarenga/projeto-financeiro/releases/latest)**, em *Assets*.
 
 | Sistema | Arquivo | Como instalar |
 |---|---|---|
-| **Mac** (Apple Silicon: M1, M2, M3…) | `PainelFinanceiro-…-Mac-arm64.dmg` | Abra o `.dmg` e arraste o **Painel Financeiro** para **Aplicativos**. Na primeira vez, o Mac bloqueia (o app não é assinado pela Apple): abra **Ajustes do Sistema → Privacidade e Segurança**, role até o aviso do Painel Financeiro e clique em **Abrir Mesmo Assim**. |
-| **Windows** 10/11 | `PainelFinanceiro-…-Windows-Instalador.exe` | Dê dois cliques. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**. Não pede senha de administrador; cria o atalho no Menu Iniciar. |
+| **Mac** (Apple Silicon: M1, M2, M3…) | `PainelFinanceiro-Mac.dmg` | Abra o `.dmg` e arraste o **Painel Financeiro** para **Aplicativos**. Na primeira vez, o Mac bloqueia (o app não é assinado pela Apple): abra **Ajustes do Sistema → Privacidade e Segurança**, role até o aviso do Painel Financeiro e clique em **Abrir Mesmo Assim**. |
+| **Windows** 10/11 | `PainelFinanceiro-Windows-Instalador.exe` | Dê dois cliques. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**. Não pede senha de administrador; cria o atalho no Menu Iniciar. |
 
 O painel abre numa janela própria. Para fechar, feche a janela. **Seus dados ficam fora do app**, então
 atualizar ou desinstalar não apaga nada:

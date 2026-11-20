@@ -5,6 +5,7 @@ funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
 ## 0.10.0 — app para Mac e Windows
 - O painel agora tem **app de verdade**: `.dmg` para Mac (Apple Silicon) e instalador `.exe` para Windows, na página de Releases. Não precisa de Python, Docker nem navegador: abre numa janela própria e fecha junto com ela.
+- O README tem **links de download direto** ("Baixar para Windows" / "Baixar para Mac") que baixam sempre a versão mais nova com um clique.
 - No app, os dados ficam na pasta do usuário (Mac: `~/Library/Application Support/Painel Financeiro`; Windows: `%APPDATA%\Painel Financeiro`), então atualizar ou desinstalar não apaga nada. Quem já usava pelo Python ou Docker copia a pasta de dados e o `.env` para lá (ver README).
 - O app não é assinado pela Apple nem pela Microsoft: na primeira abertura o sistema avisa (o README explica como liberar).
 - Os jeitos antigos (duplo clique, Python, Docker) continuam funcionando como antes.
