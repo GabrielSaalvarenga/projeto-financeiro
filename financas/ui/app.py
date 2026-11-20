@@ -20,12 +20,14 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from financas import __version__, analytics, backup, config, settings  # noqa: E402
+from financas import __version__, analytics, backup, config, logs, settings  # noqa: E402
 from financas.categorize import (add_product_link, add_rule, all_categories, all_tags, delete_product_link,  # noqa: E402
                                  delete_rule, recategorize, set_manual, set_tag, store_pattern)
 from financas.db import session as db_session  # noqa: E402
 
 from financas.ui import theme as visual  # noqa: E402
+
+logs.setup()  # erros das telas vão para <pasta de dados>/erros.log
 
 SERIES = visual.series()  # paleta categórica em ordem fixa (por tema) — nunca ciclada
 OTHER = visual.palette()["other"]

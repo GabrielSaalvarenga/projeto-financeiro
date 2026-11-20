@@ -74,7 +74,13 @@ no Docker ele já está dentro de `dados/`). Depois abra o app.
 **Atualizar:** quando a barra lateral avisar de versão nova, baixe o arquivo novo e instale por cima.
 
 > Mac com processador Intel: por enquanto não há app pronto; use o duplo clique (`Iniciar.command`) abaixo.
-> Se o app não abrir, os detalhes do erro ficam no arquivo `painel.log` dentro da pasta de dados.
+> Se o app não abrir, os detalhes do erro ficam no arquivo `painel.log` dentro da pasta de dados
+> (`painel.anterior.log` é o da vez anterior).
+
+**Deu erro de vez em quando?** Em qualquer jeito de rodar (app, Python ou Docker), os erros das telas e das
+sincronizações ficam em `erros.log`, na pasta de dados, com data e detalhe técnico. São até 5 arquivos de 1 MB,
+e o mais antigo é apagado sozinho. O arquivo fica só no seu computador. Antes de mandar para alguém, dê uma
+olhada: ele pode ter nomes de lojas ou valores.
 
 ### Outros jeitos (pelo código)
 

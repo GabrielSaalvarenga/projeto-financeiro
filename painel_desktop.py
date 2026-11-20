@@ -74,11 +74,14 @@ def watch_parent() -> None:
     import threading
 
     def wait() -> None:
+        # os.read direto no descritor 0: NÃO usar sys.stdin aqui. Uma thread presa em sys.stdin.read()
+        # segura a trava do buffer e o Python aborta ao encerrar ("encerrou inesperadamente" no Mac).
         try:
-            (sys.stdin.buffer if sys.stdin else os.fdopen(0, "rb")).read()
-        except Exception:  # noqa: BLE001
+            while os.read(0, 1024):
+                pass
+        except OSError:
             pass
-        os._exit(0)
+        os._exit(0)  # sai na hora, sem a finalização do Python
 
     threading.Thread(target=wait, daemon=True).start()
 
@@ -101,6 +104,8 @@ def start_server(port: int, log: Path) -> subprocess.Popen:
     cmd = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
     cmd += ["--servidor", str(port)]
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    if log.exists():  # guarda a saída da vez anterior (útil se o app fechou sozinho)
+        log.replace(log.with_suffix(".anterior.log"))
     out = open(log, "w", encoding="utf-8")  # noqa: SIM115 — fica aberto enquanto o servidor roda
     return subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.PIPE,
                             creationflags=flags, env=os.environ.copy())
@@ -160,10 +165,10 @@ def main() -> None:
         webview.start(wait_and_load, private_mode=False, storage_path=str(d / "janela"))
     finally:
         if server is not None:  # só quem iniciou o servidor o encerra
-            server.terminate()
             try:
+                server.stdin.close()  # o cão de guarda do servidor vê o fim e sai sozinho (os._exit)
                 server.wait(timeout=5)
-            except subprocess.TimeoutExpired:
+            except (OSError, subprocess.TimeoutExpired):
                 server.kill()
             lock.unlink(missing_ok=True)
 

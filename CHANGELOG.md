@@ -8,6 +8,8 @@ funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 - No app, os dados ficam na pasta do usuário (Mac: `~/Library/Application Support/Painel Financeiro`; Windows: `%APPDATA%\Painel Financeiro`), então atualizar ou desinstalar não apaga nada. Quem já usava pelo Python ou Docker copia a pasta de dados e o `.env` para lá (ver README).
 - O app não é assinado pela Apple nem pela Microsoft: na primeira abertura o sistema avisa (o README explica como liberar).
 - Os jeitos antigos (duplo clique, Python, Docker) continuam funcionando como antes.
+- Novo **registro de erros** (`erros.log` na pasta de dados), em qualquer jeito de rodar: guarda com data e detalhe técnico os erros das telas e das sincronizações (Pluggy, Binance, OFX, backup), para investigar falhas que acontecem de vez em quando. Tem tamanho limitado e não sai do computador.
+- Windows: arquivos com acento (tema, avisos das contas para revisar) passam a ser lidos e gravados em UTF-8.
 
 ## 0.9.0 — visual novo e telas reorganizadas
 - **Menu agrupado** (Dia a dia, Compromissos, Patrimônio, Painel) e **um endereço por tela** (`?tela=gastos`): recarregar mantém a tela e dá para favoritar.
