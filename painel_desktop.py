@@ -68,19 +68,70 @@ def healthy(port: int) -> bool:
 
 
 # ------------------------------------------------------------------ processo do servidor (Streamlit)
+def _wait_stdin_closed_posix() -> None:
+    # os.read direto no descritor 0: NÃO usar sys.stdin aqui. Uma thread presa em sys.stdin.read()
+    # segura a trava do buffer e o Python aborta ao encerrar ("encerrou inesperadamente" no Mac).
+    try:
+        while os.read(0, 1024):
+            pass
+    except OSError:
+        pass
+
+
+def _kernel32():
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32")  # instância própria: não mexe nos argtypes que outras bibliotecas usam
+    k32.GetFileType.argtypes = [wintypes.HANDLE]
+    k32.GetFileType.restype = wintypes.DWORD
+    k32.PeekNamedPipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+                                  wintypes.LPDWORD, wintypes.LPDWORD, wintypes.LPDWORD]
+    k32.PeekNamedPipe.restype = wintypes.BOOL
+    return k32
+
+
+def _stdin_pipe_windows():
+    """Handle do stdin se for um pipe (é o que a janela passa); senão None."""
+    import msvcrt
+    try:
+        handle = msvcrt.get_osfhandle(0)
+    except OSError:
+        return None
+    file_type_pipe = 3
+    return handle if _kernel32().GetFileType(handle) == file_type_pipe else None
+
+
+def _wait_stdin_closed_windows(handle) -> None:
+    # NÃO deixar uma leitura bloqueante (os.read) pendente no pipe: enquanto ela espera, o Windows segura
+    # qualquer outra consulta ao mesmo handle — e a DLL do numpy (OpenBLAS) consulta o stdin ao carregar,
+    # com a trava do carregador de DLLs na mão. O painel congelava no "import pandas" (janela branca) e o
+    # servidor parava de responder até a outras threads. PeekNamedPipe só espia o pipe, sem deixar nada
+    # pendente, e falha quando a janela fecha o stdin ou morre.
+    import ctypes
+    from ctypes import wintypes
+    peek = _kernel32().PeekNamedPipe
+    avail = wintypes.DWORD()
+    while peek(handle, None, 0, None, ctypes.byref(avail), None):
+        if avail.value:  # a janela não escreve nada; se escrever, descarta (já está no pipe, não bloqueia)
+            os.read(0, avail.value)
+        time.sleep(0.3)
+
+
 def watch_parent() -> None:
     """A janela mantém o stdin deste processo aberto; se ela some (fechou, travou, foi forçada a sair),
-    a leitura termina e o servidor se encerra — nunca fica um painel órfão rodando escondido."""
+    o pipe fecha e o servidor se encerra — nunca fica um painel órfão rodando escondido."""
     import threading
 
+    if os.name == "nt":
+        handle = _stdin_pipe_windows()
+        if handle is None:  # rodando à mão num terminal: não há janela para vigiar
+            return
+        wait_closed = lambda: _wait_stdin_closed_windows(handle)  # noqa: E731
+    else:
+        wait_closed = _wait_stdin_closed_posix
+
     def wait() -> None:
-        # os.read direto no descritor 0: NÃO usar sys.stdin aqui. Uma thread presa em sys.stdin.read()
-        # segura a trava do buffer e o Python aborta ao encerrar ("encerrou inesperadamente" no Mac).
-        try:
-            while os.read(0, 1024):
-                pass
-        except OSError:
-            pass
+        wait_closed()
         os._exit(0)  # sai na hora, sem a finalização do Python
 
     threading.Thread(target=wait, daemon=True).start()

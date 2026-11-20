@@ -10,6 +10,7 @@ funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 - Os jeitos antigos (duplo clique, Python, Docker) continuam funcionando como antes.
 - Novo **registro de erros** (`erros.log` na pasta de dados), em qualquer jeito de rodar: guarda com data e detalhe técnico os erros das telas e das sincronizações (Pluggy, Binance, OFX, backup), para investigar falhas que acontecem de vez em quando. Tem tamanho limitado e não sai do computador.
 - Windows: arquivos com acento (tema, avisos das contas para revisar) passam a ser lidos e gravados em UTF-8.
+- Windows: a janela do app não fica mais em branco. O servidor do painel travava ao carregar o pandas/numpy porque vigiava a janela com uma leitura presa no stdin; agora só espia o pipe.
 
 ## 0.9.0 — visual novo e telas reorganizadas
 - **Menu agrupado** (Dia a dia, Compromissos, Patrimônio, Painel) e **um endereço por tela** (`?tela=gastos`): recarregar mantém a tela e dá para favoritar.
