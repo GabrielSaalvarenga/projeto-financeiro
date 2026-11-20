@@ -14,7 +14,7 @@ SOURCES = {s.id: s for s in connections.SOURCES}
 
 
 def _status(source_id: str) -> str:
-    return "✅ conectado" if connections.is_configured(SOURCES[source_id]) else "⚪ ainda não conectado"
+    return ":material/check_circle: conectado" if connections.is_configured(SOURCES[source_id]) else ":material/radio_button_unchecked: ainda não conectado"
 
 
 def _overview() -> None:
@@ -22,10 +22,10 @@ def _overview() -> None:
 O **Painel Financeiro** junta num só lugar seus gastos, cartão, previsão do mês, empréstimos, carro,
 investimentos e contas de luz e água. Versão **{__version__}**.
 
-- 🔒 **Somente leitura.** O painel só consulta. Ele **nunca** paga, transfere, faz Pix ou negocia nada.
-- 💻 **Seus dados ficam no seu computador.** Não há servidor nosso no meio: o painel fala direto com a
+- **Somente leitura.** O painel só consulta. Ele **nunca** paga, transfere, faz Pix ou negocia nada.
+- **Seus dados ficam no seu computador.** Não há servidor nosso no meio: o painel fala direto com a
   Pluggy e a Binance usando as **suas** chaves, que ficam guardadas só nesta instalação.
-- 🧠 **Funciona sem IA.** Categorias, leitores de conta e cálculos são regras fixas.
+- **Funciona sem IA.** Categorias, leitores de conta e cálculos são regras fixas.
 
 **Como começar, em 3 passos:**
 1. Marque abaixo o que você usa e siga o passo a passo de cada um.
@@ -41,7 +41,7 @@ def _pluggy() -> None:
 A **Pluggy** é uma empresa regulada de Open Finance. Ela busca, com a sua autorização, os dados dos seus bancos
 e corretoras (Inter, XP, Nubank, Itaú…). O uso pessoal pelo **Meu Pluggy** é grátis.
 
-> ⏰ **Importante — prazo de 15 dias:** ao criar a conta de desenvolvedor (passo B) começa um teste de ~15 dias.
+> **Importante — prazo de 15 dias:** ao criar a conta de desenvolvedor (passo B) começa um teste de ~15 dias.
 > **Faça todas as conexões dos bancos dentro desse prazo.** Depois do prazo, o que já foi conectado continua
 > funcionando, mas não dá mais para adicionar banco novo. Por isso, conecte tudo de uma vez.
 
@@ -95,14 +95,14 @@ O painel lê os saldos de cripto da Binance com uma **chave de API só de leitur
 1. No site ou app da Binance, vá em **Perfil → Gerenciamento de API** (*API Management*).
 2. Clique em **Criar API**, escolha **Gerada pelo sistema** (*System generated*) e dê um nome (ex.: "Painel").
 3. Confirme com a verificação de segurança da Binance (2FA, e-mail ou SMS).
-4. Copie a **API Key** e a **Secret Key**. ⚠️ A Secret Key só aparece **uma vez** — copie antes de sair da tela.
+4. Copie a **API Key** e a **Secret Key**. A Secret Key só aparece **uma vez** — copie antes de sair da tela.
 5. Clique em **Editar restrições** e deixe marcado **apenas "Enable Reading"** (Permitir leitura).
    **Não** marque negociar (*Spot & Margin Trading*), saque (*Withdrawals*), transferência, margem nem futuros.
 6. Recomendado: em **Restringir acesso a IPs confiáveis**, informe o IP da sua internet (pesquise "qual é meu IP").
    Se a sua operadora trocar o IP, a conexão para de funcionar — é só atualizar o IP lá na Binance.
 7. Salve e cole as duas chaves em **Configurações → Conexões → Binance → Testar e salvar**.
 
-🔒 O painel **recusa** qualquer chave que consiga negociar, sacar ou transferir — mesmo que você cole uma assim.
+O painel **recusa** qualquer chave que consiga negociar, sacar ou transferir — mesmo que você cole uma assim.
 """)
 
 
@@ -126,24 +126,24 @@ def render(go_to: Callable[[str], None]) -> None:
 
     st.subheader("O que você usa?")
     c1, c2, c3 = st.columns(3)
-    use_pluggy = c1.checkbox("🏦 Bancos", value=True, key="guide_pluggy",
+    use_pluggy = c1.checkbox("Bancos", value=True, key="guide_pluggy",
                              help="Bancos e corretoras (Inter, XP, Nubank, Itaú…) via Open Finance (Pluggy)")
-    use_binance = c2.checkbox("🪙 Binance", value=connections.is_configured(SOURCES["binance"]), key="guide_binance")
-    use_bills = c3.checkbox("💡 Contas de luz e água", value=False, key="guide_bills")
+    use_binance = c2.checkbox("Binance", value=connections.is_configured(SOURCES["binance"]), key="guide_binance")
+    use_bills = c3.checkbox("Contas de luz e água", value=False, key="guide_bills")
 
     if use_pluggy:
-        with st.expander("🏦 Passo a passo — conectar bancos pela Pluggy", expanded=True):
+        with st.expander("Passo a passo — conectar bancos pela Pluggy", expanded=True):
             _pluggy()
     if use_binance:
-        with st.expander("🪙 Passo a passo — gerar a chave da Binance", expanded=True):
+        with st.expander("Passo a passo — gerar a chave da Binance", expanded=True):
             _binance()
     if use_bills:
-        with st.expander("💡 Passo a passo — contas de luz e água", expanded=True):
+        with st.expander("Passo a passo — contas de luz e água", expanded=True):
             _bills()
     if not (use_pluggy or use_binance or use_bills):
         st.info("Marque acima o que você usa para ver o passo a passo.")
 
     st.subheader("Depois de colar as chaves")
     a, b = st.columns(2)
-    a.button("⚙️ Ir para Configurações", on_click=go_to, args=("Configurações",), use_container_width=True)
-    b.button("🔄 Ir para Sincronizar", on_click=go_to, args=("Sincronizar",), use_container_width=True)
+    a.button("Ir para Configurações", icon=":material/settings:", on_click=go_to, args=("Configurações",), use_container_width=True)
+    b.button("Ir para Sincronizar", icon=":material/sync:", on_click=go_to, args=("Sincronizar",), use_container_width=True)

@@ -3,6 +3,15 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.9.0 — visual novo e telas reorganizadas
+- **Menu agrupado** (Dia a dia, Compromissos, Patrimônio, Painel) e **um endereço por tela** (`?tela=gastos`): recarregar mantém a tela e dá para favoritar.
+- **Um número em destaque por tela**, com o seletor de período dentro do bloco: gasto do mês (Visão geral, Gastos), entradas, fatura aberta, sobra prevista, conta do mês e custo por mês do carro (soma de fixos, depreciação e média de combustível; não inclui manutenção).
+- **Visão geral:** bloco "Hoje" (saldo, investimentos, a receber com atraso, fatura, dívida), agenda única de recebimentos e vencimentos e **Pendências** (Pix a conferir, gastos sem categoria, contas vencidas sem pagamento, PDFs para revisar, dados desatualizados).
+- **Extrato por dia** em Gastos e Entradas, com a seta que abre o lançamento e a correção ali mesmo; mostra por onde passou (cartão ou conta, com o **final do cartão**, só os 4 últimos dígitos).
+- **Listas no lugar das tabelas**, botão **Colunas** para escolher os campos e fichas no celular, sem rolagem lateral.
+- **Empréstimos e vendas:** "Quem me deve" com **Dar baixa** na linha, **Ficha por pessoa**, fila de **Pix a conferir** (confirmar ou ignorar), simulador, resultado por empréstimo (juros recebidos, pontualidade) e cadastros em passos com resumo ao lado.
+- Sem emojis, ícones no menu, datas em dia/mês/ano, números no padrão brasileiro e tema claro/escuro revisados. Nenhuma tabela nova no banco.
+
 ## 0.8.0 — gráfico clicável e Pix no crédito
 - No gráfico **Gasto mensal por categoria** (Gastos), clicar numa cor mostra logo abaixo os lançamentos daquela categoria (do mês clicado ou do período todo), com total.
 - O texto ao passar o mouse nas barras agora mostra o **nome da categoria** na caixa lateral, com o mês e o valor.

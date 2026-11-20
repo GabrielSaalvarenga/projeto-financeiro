@@ -46,10 +46,12 @@ def seed() -> None:
             if d > iso:  # nada no futuro
                 return
             n += 1
+            # cartão fictício: só o final (4 dígitos), no mesmo lugar em que a origem real o entrega
+            raw = '{"creditCardMetadata": {"cardNumber": "4321"}}' if acc == "demo-card" else None
             conn.execute("INSERT INTO transactions(id, account_id, source, date, description, amount, counterparty,"
-                         " payment_method, installment_number, total_installments, manual_category, tag) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (f"demo{n}", acc, "demo", d, desc, amount, cp, method, inst, tot, cat, tag))
+                         " payment_method, installment_number, total_installments, manual_category, tag, raw) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (f"demo{n}", acc, "demo", d, desc, amount, cp, method, inst, tot, cat, tag, raw))
 
         for i, p in enumerate(months):
             last = p.end_time.day
@@ -172,6 +174,8 @@ def seed() -> None:
                          (sale_id, f"{p.year}-{p.month:02d}-15"))
             if k < 3:
                 tx("demo-cc", f"{p.year}-{p.month:02d}-15", "Pix recebido", 300.00, "MARINA EXEMPLO SOUZA", "PIX")
+        # Pix da compradora com valor diferente da parcela: não casa sozinho e aparece em "Pix a conferir"
+        tx("demo-cc", f"{months[-1].year}-{months[-1].month:02d}-03", "Pix recebido", 150.00, "MARINA EXEMPLO SOUZA", "PIX")
 
         # dívida minha com banco: 24x, parcela do contrato, 9 já pagas
         bstart = months[-9]
@@ -181,6 +185,8 @@ def seed() -> None:
                       f"{(bstart + 1).year}-{(bstart + 1).month:02d}-05", 773.50, "Crédito pessoal"))
         for k in range(9):
             p = bstart + k + 1
+            if f"{p.year}-{p.month:02d}-05" > iso:  # nada no futuro: parcela que ainda não venceu fica em aberto
+                continue
             conn.execute("INSERT INTO bank_loan_payments(bank_loan_id, date, amount) VALUES (1,?,773.50)",
                          (f"{p.year}-{p.month:02d}-05",))
             tx("demo-cc", f"{p.year}-{p.month:02d}-05", "Parcela empréstimo", -773.50, "Banco Exemplo", cat="Moradia")
@@ -201,6 +207,9 @@ def seed() -> None:
             conn.execute("INSERT INTO car_fixed(year, item, amount) VALUES (?,?,?)", (today.year, item, v))
         for k, p in enumerate(months):
             conn.execute("INSERT INTO fipe_history VALUES (?,?)", (p.strftime("%Y-%m"), round(74200 - 310 * k, 2)))
+        # km atual nunca fica abaixo do último abastecimento registrado
+        conn.execute("UPDATE car_profile SET km_now = MAX(km_now, (SELECT MAX(odometer) FROM car_events) + 120) "
+                     "WHERE id = 1")
 
         # investimentos: 12 fotos mensais
         carteira = (("binance", "BTC", "CRYPTO", 5200, 0.021), ("binance", "ETH", "CRYPTO", 1900, 0.38),

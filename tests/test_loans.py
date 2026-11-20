@@ -183,3 +183,32 @@ def test_grafico_ignora_emprestimo_sem_data_e_tabela_tem_parcelas():
         st = analytics.loan_status(conn, date(2026, 3, 1))
         assert st.set_index("person")["installments"].to_dict()["Eva"] == 3
         assert st.set_index("person")["installments"].isna()["Fabio"]
+
+
+# ---------------------------------------------------------------- resultado por empréstimo
+
+def test_pontualidade_conta_dias_de_atraso():
+    sched = [(date(2026, 2, 10), 500.0), (date(2026, 3, 10), 500.0), (date(2026, 4, 10), 500.0)]
+    allocs = [(date(2026, 2, 10), 500.0), (date(2026, 3, 15), 500.0)]
+    p = loans.punctuality(sched, allocs, date(2026, 4, 20))
+    assert [x[3] for x in p] == [0, 5, 10]
+    assert p[2][2] is None
+
+
+def test_juros_recebidos_parcelado_e_proporcional():
+    sched = loans.make_schedule(20000, 0.14, "ano", "composto", 12, date(2026, 2, 1), start=date(2026, 1, 1))
+    loan = L(1, date(2026, 1, 1), 20000.0, rate=0.14, period="ano", compounding="composto", schedule=sched)
+    st = loans.replay([loan], [R(1, date(2026, 2, 1), 1900.0)], date(2026, 2, 2))[1]
+    assert loans.interest_received(st) == pytest.approx(1900 * 2800 / 22800, abs=0.01)
+
+
+def test_juros_recebidos_sem_data_paga_juros_primeiro():
+    loan = L(1, date(2026, 1, 1), 1000.0, rate=0.02, period="mes", compounding="simples")
+    st = loans.replay([loan], [R(1, date(2026, 2, 1), 100.0)], date(2026, 2, 1))[1]
+    assert loans.interest_received(st) == pytest.approx(20.0, abs=0.01)
+
+
+def test_taxa_realizada_bate_com_a_combinada():
+    i = loans.realized_monthly_rate(1000.0, date(2026, 1, 1), [(date(2026, 3, 1), 1000 * 1.02 ** 2)])
+    assert i == pytest.approx(0.02, abs=1e-6)
+    assert loans.realized_monthly_rate(1000.0, date(2026, 1, 1), []) is None
