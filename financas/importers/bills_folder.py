@@ -59,7 +59,7 @@ def _review(base: Path, pdf: Path, reason: str) -> Path:
     dest = _free(base / "revisar" / pdf.name)
     shutil.move(str(pdf), dest)
     dest.with_suffix(".txt").write_text(reason + "\nLance pelo formulário do painel (Contas de consumo) ou "
-                                        "devolva o PDF para entrada/ depois de corrigido.\n")
+                                        "devolva o PDF para entrada/ depois de corrigido.\n", encoding="utf-8")
     return dest
 
 

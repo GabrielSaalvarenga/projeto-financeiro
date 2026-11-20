@@ -152,13 +152,13 @@ THEME_MARK = "# gerado pelo painel (aba Configurações) — pode apagar para vo
 def apply_theme(theme: str) -> bool | None:
     """Grava o tema na configuração do Streamlit. True = mudou (recarregar a página); None = arquivo próprio."""
     text = THEME_MARK + "\n" + visual.config_text(theme)
-    current = THEME_FILE.read_text() if THEME_FILE.exists() else None
+    current = THEME_FILE.read_text(encoding="utf-8") if THEME_FILE.exists() else None
     if current is not None and THEME_MARK not in current:
         return None  # configuração escrita à mão: não mexer
     if current == text:
         return False
     THEME_FILE.parent.mkdir(exist_ok=True)
-    THEME_FILE.write_text(text)
+    THEME_FILE.write_text(text, encoding="utf-8")
     return True
 
 
@@ -1461,7 +1461,7 @@ elif page == "Contas de consumo":
             st.warning(f"{len(revisar)} PDF(s) aguardando revisão em `{config.BILLS_DIR / 'revisar'}`")
             for p in revisar:
                 why = p.with_suffix(".txt")
-                st.caption(esc(why.read_text().splitlines()[0] if why.exists() else p.name))
+                st.caption(esc(why.read_text(encoding="utf-8").splitlines()[0] if why.exists() else p.name))
 
     from financas.importers import utilities
     with st.expander("Lançar ou completar uma conta à mão", icon=":material/edit:", expanded="bill_msg" in st.session_state):

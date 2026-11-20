@@ -39,7 +39,9 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 exe = EXE(
-    pyz, a.scripts, [],
+    pyz, a.scripts,
+    # modo UTF-8: no Windows o padrão seria cp1252 e arquivos com acento (tema, .env) quebrariam
+    [("X utf8_mode=1", None, "OPTION")],
     exclude_binaries=True,
     name=NAME,
     console=False,  # sem janela preta
