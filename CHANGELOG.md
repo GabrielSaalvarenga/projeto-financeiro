@@ -3,6 +3,12 @@
 Versões no formato **grande.melhoria.correção** (ex.: 1.2.3): correção de erro sobe o último número,
 funcionalidade nova sobe o do meio, mudança grande sobe o primeiro.
 
+## 0.10.0 — app para Mac e Windows
+- O painel agora tem **app de verdade**: `.dmg` para Mac (Apple Silicon) e instalador `.exe` para Windows, na página de Releases. Não precisa de Python, Docker nem navegador: abre numa janela própria e fecha junto com ela.
+- No app, os dados ficam na pasta do usuário (Mac: `~/Library/Application Support/Painel Financeiro`; Windows: `%APPDATA%\Painel Financeiro`), então atualizar ou desinstalar não apaga nada. Quem já usava pelo Python ou Docker copia a pasta de dados e o `.env` para lá (ver README).
+- O app não é assinado pela Apple nem pela Microsoft: na primeira abertura o sistema avisa (o README explica como liberar).
+- Os jeitos antigos (duplo clique, Python, Docker) continuam funcionando como antes.
+
 ## 0.9.0 — visual novo e telas reorganizadas
 - **Menu agrupado** (Dia a dia, Compromissos, Patrimônio, Painel) e **um endereço por tela** (`?tela=gastos`): recarregar mantém a tela e dá para favoritar.
 - **Um número em destaque por tela**, com o seletor de período dentro do bloco: gasto do mês (Visão geral, Gastos), entradas, fatura aberta, sobra prevista, conta do mês e custo por mês do carro (soma de fixos, depreciação e média de combustível; não inclui manutenção).

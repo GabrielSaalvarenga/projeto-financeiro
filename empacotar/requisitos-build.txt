@@ -1,0 +1,4 @@
+# Só para gerar o app (Mac .app / Windows .exe); quem roda pelo Python ou Docker não precisa disto.
+-r ../requirements.txt
+pywebview==6.2.1
+pyinstaller==6.22.3
